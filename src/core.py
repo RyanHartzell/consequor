@@ -26,7 +26,6 @@ SERVER_UDP_PORT = 54346
 
 class Modes:
     TCP = socket.SOCK_STREAM
-    UDP = socket.SOCK_DGRAM
 
 # Set up our classes and helper functions
 
@@ -170,10 +169,8 @@ class Server:
     def __init__(self, addr=SERVER_DEFAULT_ADDR, tcp_port=SERVER_TCP_PORT, udp_port=SERVER_UDP_PORT):
         self._addr = addr
         self._tcp_port = tcp_port
-        self._udp_port = udp_port
 
         self.tcp_socket = create_server(addr, self._tcp_port, Modes.TCP) # this is the 'listening' socket, and when ready to read will return a new connection socket file descriptor on 'accept'
-        self.udp_socket = create_server(addr, self._udp_port, Modes.UDP) # this is a straight up UDP socket and when ready to read we just grab whatever datagram is coming in from the client
 
         self.msg_queue = Queue(64) # blocks after 64 items pushed, until some are removed. Queue represents FULLY ASSEMBLED MESSAGES!!!!
 
@@ -189,10 +186,6 @@ class Server:
                 if r is self.tcp_socket: # ONLY RUNS FOR NEW CONNECTION!!!
                     conn = self._tcp_read(r)
                     connections.append(conn)
-
-                # All UDP messaging comes in over this single socket
-                elif r is self.udp_socket:
-                    self._udp_read(r)
 
                 # Saved TCP connections (mostly used in object oriented mode) that are sending will be handled here
                 else:
@@ -258,49 +251,6 @@ class Server:
         if accept:
             return conn
 
-    def _udp_send(self, client, nbytes_recv, addr):
-        # simple SHORT message sender which responds to a client request with an acknowledgment that the server has completed its request
-        # send a confirmation value like "REQUEST #{hash} HANDLED, {actual}/{intended} BYTES RECIEVED" 
-        client.sendto(pack_msg(f"REQUEST HANDLED, {nbytes_recv} BYTES RECIEVED."), addr)
-
-    # Really this is a request handler at its core. Will probably need to define a protocol for GET and PUT basically. We need a way of adding clients to the select list of writeable client sockets.
-    def _udp_read(self, client):
-        
-        # HANDLE REQUEST TYPE FIRST
-        msg, addr = client.recvfrom(3)
-        request_type = unpack_msg(msg) # Always first 3 bytes of communication
-        print(f"* REQUEST TYPE: {request_type}")
-
-        if request_type == 'PUT':
-
-            msg, addr = client.recvfrom(8)
-            nbytes_msg, = unpack('>Q', msg) # Need the comma during assignment to unpack tuple returned from unpack
-
-            msg = recvall(client, nbytes_msg, chunk_size=512, address=addr)
-
-            if len(msg) != nbytes_msg:
-                client.sendto(b'Full message not received... Please try again.', addr)
-                print(f"[!] Error: Client {addr} must attempt to resend its message. Only {len(msg)} of {nbytes_msg} bytes received.")
-                return
-
-            print(f"* RECIEVED MESSAGE FROM {addr}, LENGTH {len(msg)} BYTES, PREVIEW:\n{msg[:50].decode('utf-8')}...\n")
-            self._udp_send(client, len(msg), addr)
-
-            # Now decode full message and store in Queue
-            self.msg_queue.put(unpack_msg(msg))
-
-        elif request_type=='GET':
-            fwdmsg = 'No messages in the Queue :( Try again soon!'
-            try:
-                fwdmsg = self.msg_queue.get(timeout=0.1)
-            except Empty:
-                pass
-            send_chunked(client, pack_msg(fwdmsg), address=addr) # If timeout, means there are no messages to send! So just continue on
-
-        else:
-            client.sendto(b'[!] Error: Request Type must be either "GET" or "PUT"... Please try again.', addr)
-            print(f"[!] Error: Client {addr} must attempt to resend its message. Invalid request type.")
-
 
 # Client sockets block by default, and default to TCP mode.
 class Client:
@@ -342,9 +292,6 @@ class Client:
 
     # Kill method (TCP only!!!)
     def kill_request(self):
-        if self.mode == Modes.UDP:
-            print("Kill not required for UDP... doing nothing now.")
-            return
         # For TCP, need to give the indication to server that it can remove our connection.
         send(self.socket, b"DEL", address=None, send_length=False)
 
@@ -366,6 +313,5 @@ if __name__=="__main__":
     s = Server()
     print("SERVER INFO:")
     print("TCP:", s.tcp_socket)
-    print("UDP:", s.udp_socket)
     s.run()
 
