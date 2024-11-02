@@ -11,7 +11,6 @@ __copyright__="Copyright Ryan Hartzell, AUG 29 2024"
 
 # Imports
 import socket
-from threading import *
 from struct import pack, unpack
 import select
 from queue import Queue, Empty
@@ -160,7 +159,7 @@ def create_server(addr, port, mode, block=False):
     s.bind((addr,port))  # server specific bind
     # ONLY FOR TCP!!! CONNECTION BASED
     if mode==Modes.TCP:
-        s.listen(5)  # set max num of unaccepted connections before not accepting connections
+        s.listen(1000)  # set max num of unaccepted connections before not accepting connections
     return s
 
 # Trying to make single threaded Server that can handle both TCP and UDP (separate sockets bound to same port!) client connections
@@ -184,8 +183,13 @@ class Server:
             for r in readable:
                 # Check if tcp or udp and handle accordingly
                 if r is self.tcp_socket: # ONLY RUNS FOR NEW CONNECTION!!!
-                    conn = self._tcp_read(r)
-                    connections.append(conn)
+                    conn, addr = self._tcp_read(r)
+                    print(addr)
+
+                    # Ensures that a non-DEL exit will not crash the server!!!!!!
+                    if isinstance(conn, socket.socket):
+                        # Only append if this is a socket
+                        connections.append(conn)
 
                 # Saved TCP connections (mostly used in object oriented mode) that are sending will be handled here
                 else:
@@ -203,6 +207,9 @@ class Server:
         if accept:
             conn, addr = conn.accept()
             conn.setblocking(1)
+
+            # Try adding return here so we literally ONLY accept a connection request
+            return conn, addr
 
         # HANDLE REQUEST TYPE FIRST
         msg = conn.recv(3)
@@ -237,6 +244,10 @@ class Server:
         elif request_type == 'DEL':
             conn.send(b'GOODBYE!')
             return 'DEL'
+        
+        elif request_type == '':
+            print("[!] Automatically removing dead connection:", conn)
+            return 'DEL'
 
         else:
             print(f"[!] Error: Client {conn} must attempt to resend its message. Invalid request type.")
@@ -248,8 +259,8 @@ class Server:
                 return 'DEL'
 
         # only return the connection if we accepted a new one 
-        if accept:
-            return conn
+        # if accept:
+        #     return conn
 
 
 # Client sockets block by default, and default to TCP mode.

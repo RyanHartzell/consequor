@@ -1,5 +1,4 @@
 # Imports
-from threading import *
 from struct import pack, unpack
 import json
 import uuid

@@ -2,62 +2,60 @@
 Basic Client-side app for interacting with our replicated bulletin board service
 """
 
+from src.core import Client, Modes
+from src.msg_utils import *
 import streamlit as st
 import random
+
+TEST_TCP_SERVER_PORT = 54345
 
 ARTICLE_CACHE = list(range(100))
 
 # Should probably store the set of servers in a file or something read in
-SERVERS = [('', 9900+i) for i in range(9)] # DEFAULTS TO 9 REPLICAS
+# SERVERS = [('', 9900+i) for i in range(9)] # DEFAULTS TO 9 REPLICAS
+SERVERS = [('localhost',TEST_TCP_SERVER_PORT+i) for i in range(9)]
 COORDINATOR = SERVERS[0]
 
-# def connect(choice):
-#     # Run connection code
-#     # Opens a TCP connection to a server
-#     c = Client(mode="TCP")    
-#     addr = c.connect(choice) # Check syntax in original project
-#     return c, addr
-
 def connect(choice):
-    print("New choice of server: ", choice)
-    st.session_state["SERVER_CONNECTION"] = choice # This will be the actual client connection
-    return
+    print("Running connection code")
+    # Opens a TCP connection to a server
+    try:
+        print(f"Attempting to connect to server at {choice}...")
+        c = Client(choice[0], choice[1], mode=Modes.TCP)
+        print(f"Connected to server using new TCP port:", c.socket)
+        st.session_state["SERVER_CONNECTION"] = (choice, c) # This will be the actual client connection, if connection was successful
+    except OSError as e:
+        print(f'Could not connect to server at {choice}. Maybe it has not been initialized or has gone down?', e)
+
+def disconnect(sock):
+    sock.sendall(b'DEL')
 
 if __name__=="__main__":
     # Set up "login" page so each post has a username and address attached
-
-
     st.title("Welcome to *consequor*! :classical_building::card_index:")
     st.write("This is a simple bulletin board app backed by a distributed set of remote server replicas. These server replicas each maintain a set (possibly out of sync) of articles and replies to articles for a single topic. You can post your own, read a list of all article titles, and post replies to articles you've chosen to view.")
 
     side = st.sidebar
-    # num_articles = side.slider("num_articles_shown", 5, 20)
 
     # Add button for connection management (drop down, reconnects on new selection)
     choice = side.selectbox("Connect to a new Server", SERVERS) # DEFAULTS TO 0th SERVER
 
-    if st.session_state.get("SERVER_CONNECTION") != choice:
-        connect(choice) # Will return our client
+    # Check client's server attribute, and if not equal to choice of format (HOST_ADDR, HOST_PORT), or is None, then connect
+    client_state = st.session_state.get("SERVER_CONNECTION")
+    if client_state is None:
+        connect(choice)
+    elif client_state[0] != choice:
+        print(f"Currently connected to server {client_state[0]} via TCP socket at {client_state[1].socket}")
+        # st.session_state["SERVER_CONNECTION"][1].kill_request() # This might be causing issues, so should look at explicitly disconnecting if possible (socket.close()?)
+        connect(choice)
+        print(f"Now connected to server {client_state[0]} via TCP socket at {client_state[1].socket}")
+
+    # print("CURRENT STATE: ", st.session_state)
     
-    st.write(f"You are connected to the following server: {st.session_state['SERVER_CONNECTION']}")
-
-    # Buttons for read (get list of articles), choose (selects from listed articles which to open?), post (make a new article and posts to server)
-    # state = None
-    # cols = st.columns(3)
-    # cols[0].button("List All Articles", use_container_width=True) # READ
-    # cols[1].button("Focus One Article", use_container_width=True) # CHOOSE
-    # cols[2].button("Create A New Post", use_container_width=True) # POST
-
-    # # Buttons switch between container view based on state
-    # if state == "CHOOSE":
-    #     print("Create view of one post and all its children") # Will get published to server on enter as JSON
-    # if state == "POST":
-    #     print("Open a new text input box or form") # Will get published to server on enter as JSON
-    # else:
-    #     # By default, just list all articles in order for "READ" options
+    st.write(f"You are connected to the following server: {st.session_state.get('SERVER_CONNECTION')}")
 
     # Try tabs instead!
-    tabs = st.tabs(["[READ]", " [CHOOSE]", "[POST]"])
+    tabs = st.tabs(["[READ]", "[CHOOSE]", "[POST]"])
 
     with tabs[0]:
         st.header("List All Primary Articles")
@@ -89,3 +87,4 @@ if __name__=="__main__":
     
     with tabs[2]:
         st.header("Create A New Post")
+        st.text_input("Write something interesting!")
