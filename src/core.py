@@ -185,14 +185,20 @@ class Server:
 
             for r in readable:
                 # Check if tcp or udp and handle accordingly
-                if r is self.tcp_socket: # ONLY RUNS FOR NEW CONNECTION!!!
+                if r is self.tcp_socket: # ONLY RUNS FOR NEW CONNECTION AND CLOSING CONNECTION!!!
+
                     conn, addr = self._tcp_read(r)
-                    print(addr)
+                    print("Accepted new TCP connection from ", addr)
+
+                    # if r.getpeername() in [c.getpeername() for c in connections]:
+                    #     connections.remove(r)
 
                     # Ensures that a non-DEL exit will not crash the server!!!!!!
                     if isinstance(conn, socket.socket):
                         # Only append if this is a socket
                         connections.append(conn)
+
+                    print("Current connections: ", connections)
 
                 # All UDP messaging comes in over this single socket
                 elif r is self.udp_socket:
