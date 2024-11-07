@@ -1,8 +1,50 @@
 import select
+
+import jsonschema.exceptions
 from msg_utils import *
 import random
 import core
+import jsonschema
 
+JSON_SCHEMA = {
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "parent": {
+        "type": "number"
+      },
+      "id": {
+        "type": "number"
+      },
+      "content": {
+        "type": "string"
+      },
+      "meta": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "required": [
+      "parent",
+      "id",
+      "content",
+      "meta"
+    ]
+  }
+}
+
+# Will raise error if not a valid array of post objects...
+def validate_payload_schema(msg_payload):
+    jsonschema.validate(instance=msg_payload, schema=JSON_SCHEMA)
 
 class Replica():
     def __init__(self, node_id, replica_address_list, mode = 'sequential' ) -> None:
@@ -16,7 +58,6 @@ class Replica():
         self.me_socket = core.create_server(self.replica_addresses[node_id][0], self.replica_addresses[node_id][1], core.Modes.TCP)
         self.connections = [None] * len(self.replica_addresses)
         self.connect_to_replicas()        # includes our own socket and conections to every other replica
-
 
         # self.elect_leader() #TODO
     
@@ -107,7 +148,7 @@ class Replica():
         if self.coordinator_flag:
             if self.consistency_mode == 'Sequential':
                 pass
-            
+
             elif self.consistency_mode == 'Quorum':
                 total_replicas_in_group = len(self.replica_addresses)
                 quorum_size = (total_replicas_in_group/2) + 1
