@@ -104,6 +104,7 @@ class Replica():
         if self.coordinator_flag:
             if self.consistency_mode == 'Sequential':
                 pass
+            
             elif self.consistency_mode == 'Quorum':
                 total_replicas_in_group = len(self.replica_addresses)
                 quorum_size = (total_replicas_in_group/2) + 1
@@ -117,11 +118,10 @@ class Replica():
             else:
                 print("Woah there. I don't recognize that mode")
         else:
-            while(True):
-                #Forward POST to coordinator
-                forward_message = pack_msg(msg)
-                #send message to coordinator
-                self.replica_connections[self.coordinator_index].sendall(forward_message.encode('utf-8'))
+            #Forward POST to coordinator
+            forward_message = pack_msg(msg)
+            #send message to coordinator
+            self.connections[self.coordinator_index].sendall(forward_message.encode('utf-8'))
 
     def execute_CHOOSE(self, conn):
         if self.coordinator_flag:
