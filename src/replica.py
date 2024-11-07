@@ -12,10 +12,11 @@ class Replica():
         self.coordinator_index = 0
         self.data = {}                      #dict to hold all post data, metadata, etc.
 
-        self.me_socket = core.create_server(self.replica_addresses[node_id][0], self.replica_addresses[node_id][1], core.Modes.TCP)
-        self.connections = self.connect_to_replicas()        # includes our own socket and conections to every other replica
-
         self.this_replica_id = node_id
+        self.me_socket = core.create_server(self.replica_addresses[node_id][0], self.replica_addresses[node_id][1], core.Modes.TCP)
+        self.connections = [None] * len(self.replica_addresses)
+        self.connect_to_replicas()        # includes our own socket and conections to every other replica
+
 
         # self.elect_leader() #TODO
     
@@ -25,7 +26,9 @@ class Replica():
 
     #POpulates list of sockets.
     def connect_to_replicas(self):
-        for replica in range(0,len(self.replica_addresses)):
+        if not self.coordinator_flag:
+            #wait for connection from coordinator
+        for replica in range(self.this_replica_id,len(self.replica_addresses)):
             if replica != self.this_replica_id:
                 self.connections[replica] = core.create_client(self.replica_addresses[replica][0], self.replica_addresses[replica][1], core.Modes.TCP)
             else:

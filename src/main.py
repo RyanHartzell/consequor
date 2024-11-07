@@ -17,4 +17,4 @@ if __name__ == "__main__":
 
 
     # Distributed Mutex object
-    replica_server = Replica(args[1], entire_host_id_list, mode=args[2] )
+    replica_server = Replica(int(args[1]), entire_host_id_list, mode=args[2] )
