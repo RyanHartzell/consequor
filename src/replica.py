@@ -12,10 +12,10 @@ class Replica():
         self.coordinator_index = 0
         self.data = {}                      #dict to hold all post data, metadata, etc.
 
-        self.me_socket = core.create_server(self.replica_addresses[node_id][0], self.replica_addresses[node_id][1], core.Modes.TCP)
-        self.connections = self.connect_to_replicas()        # includes our own socket and conections to every other replica
-
         self.this_replica_id = node_id
+        self.me_socket = core.create_server(self.replica_addresses[node_id][0], self.replica_addresses[node_id][1], core.Modes.TCP)
+        self.connections = [None] * len(self.replica_addresses)
+        self.connect_to_replicas()        # includes our own socket and conections to every other replica
 
         # self.elect_leader() #TODO
     
@@ -104,7 +104,7 @@ class Replica():
         if self.coordinator_flag:
             if self.consistency_mode == 'Sequential':
                 pass
-            
+
             elif self.consistency_mode == 'Quorum':
                 total_replicas_in_group = len(self.replica_addresses)
                 quorum_size = (total_replicas_in_group/2) + 1
