@@ -21,7 +21,6 @@ import uuid
 CHUNK_SIZE = 512
 SERVER_DEFAULT_ADDR = ''
 SERVER_TCP_PORT = 54345
-SERVER_UDP_PORT = 54346
 
 class Modes:
     TCP = socket.SOCK_STREAM
@@ -164,113 +163,113 @@ def create_server(addr, port, mode, block=False):
 
 # Trying to make single threaded Server that can handle both TCP and UDP (separate sockets bound to same port!) client connections
 # Currently does not block
-class Server:
-    def __init__(self, addr=SERVER_DEFAULT_ADDR, tcp_port=SERVER_TCP_PORT, udp_port=SERVER_UDP_PORT):
-        self._addr = addr
-        self._tcp_port = tcp_port
+# class Server:
+#     def __init__(self, addr=SERVER_DEFAULT_ADDR, tcp_port=SERVER_TCP_PORT):
+#         self._addr = addr
+#         self._tcp_port = tcp_port
 
-        self.tcp_socket = create_server(addr, self._tcp_port, Modes.TCP) # this is the 'listening' socket, and when ready to read will return a new connection socket file descriptor on 'accept'
+#         self.tcp_socket = create_server(addr, self._tcp_port, Modes.TCP) # this is the 'listening' socket, and when ready to read will return a new connection socket file descriptor on 'accept'
 
-        self.msg_queue = Queue(64) # blocks after 64 items pushed, until some are removed. Queue represents FULLY ASSEMBLED MESSAGES!!!!
+#         self.msg_queue = Queue(64) # blocks after 64 items pushed, until some are removed. Queue represents FULLY ASSEMBLED MESSAGES!!!!
 
-    def run(self):
-        # model after chatroom in IPTools
-        connections = [self.tcp_socket, self.udp_socket]
-        while True: # run forever
-            # get all readable and writeable connections
-            readable, writable, _ = select.select(connections, [], [], 0.1)
+#     def run(self):
+#         # model after chatroom in IPTools
+#         connections = [self.tcp_socket, self.udp_socket]
+#         while True: # run forever
+#             # get all readable and writeable connections
+#             readable, writable, _ = select.select(connections, [], [], 0.1)
 
-            for r in readable:
-                # Check if tcp or udp and handle accordingly
-                if r is self.tcp_socket: # ONLY RUNS FOR NEW CONNECTION AND CLOSING CONNECTION!!!
+#             for r in readable:
+#                 # Check if tcp or udp and handle accordingly
+#                 if r is self.tcp_socket: # ONLY RUNS FOR NEW CONNECTION AND CLOSING CONNECTION!!!
 
-                    conn, addr = self._tcp_read(r)
-                    print("Accepted new TCP connection from ", addr)
+#                     conn, addr = self._tcp_read(r)
+#                     print("Accepted new TCP connection from ", addr)
 
-                    # if r.getpeername() in [c.getpeername() for c in connections]:
-                    #     connections.remove(r)
+#                     # if r.getpeername() in [c.getpeername() for c in connections]:
+#                     #     connections.remove(r)
 
-                    # Ensures that a non-DEL exit will not crash the server!!!!!!
-                    if isinstance(conn, socket.socket):
-                        # Only append if this is a socket
-                        connections.append(conn)
+#                     # Ensures that a non-DEL exit will not crash the server!!!!!!
+#                     if isinstance(conn, socket.socket):
+#                         # Only append if this is a socket
+#                         connections.append(conn)
 
-                    print("Current connections: ", connections)
+#                     print("Current connections: ", connections)
 
-                # All UDP messaging comes in over this single socket
-                elif r is self.udp_socket:
-                    self._udp_read(r)
+#                 # All UDP messaging comes in over this single socket
+#                 elif r is self.udp_socket:
+#                     self._udp_read(r)
 
-                # Saved TCP connections (mostly used in object oriented mode) that are sending will be handled here
-                else:
-                    ret = self._tcp_read(r, accept=False)
-                    if ret == 'DEL':
-                        connections.remove(r)
-                        r.close() # hopefully this waits for the final message to clear the write queue, but not tragic if it doesn't.
+#                 # Saved TCP connections (mostly used in object oriented mode) that are sending will be handled here
+#                 else:
+#                     ret = self._tcp_read(r, accept=False)
+#                     if ret == 'DEL':
+#                         connections.remove(r)
+#                         r.close() # hopefully this waits for the final message to clear the write queue, but not tragic if it doesn't.
 
-    def _tcp_send(self, conn, nbytes_recv):
-        # simple SHORT message sender which responds to a client request with an acknowledgment that the server has completed its request
-        # send a confirmation value like "REQUEST #{hash} HANDLED, {actual}/{intended} BYTES RECIEVED" 
-        conn.send(pack_msg(f"REQUEST HANDLED, {nbytes_recv} BYTES RECIEVED.")) # Should I replace this with simple ACK?
+#     def _tcp_send(self, conn, nbytes_recv):
+#         # simple SHORT message sender which responds to a client request with an acknowledgment that the server has completed its request
+#         # send a confirmation value like "REQUEST #{hash} HANDLED, {actual}/{intended} BYTES RECIEVED" 
+#         conn.send(pack_msg(f"REQUEST HANDLED, {nbytes_recv} BYTES RECIEVED.")) # Should I replace this with simple ACK?
 
-    def _tcp_read(self, conn, accept=True):
-        if accept:
-            conn, addr = conn.accept()
-            conn.setblocking(1)
+#     def _tcp_read(self, conn, accept=True):
+#         if accept:
+#             conn, addr = conn.accept()
+#             conn.setblocking(1)
 
-            # Try adding return here so we literally ONLY accept a connection request
-            return conn, addr
+#             # Try adding return here so we literally ONLY accept a connection request
+#             return conn, addr
 
-        # HANDLE REQUEST TYPE FIRST
-        msg = conn.recv(3)
-        request_type = unpack_msg(msg) # Always first 3 bytes of communication
-        print(f"* REQUEST TYPE: {request_type}")
+#         # HANDLE REQUEST TYPE FIRST
+#         msg = conn.recv(3)
+#         request_type = unpack_msg(msg) # Always first 3 bytes of communication
+#         print(f"* REQUEST TYPE: {request_type}")
 
-        if request_type == 'PUT':
+#         if request_type == 'PUT':
 
-            nbytes_msg, = unpack('>Q', conn.recv(8)) # Need the comma during assignment to unpack tuple returned from unpack
+#             nbytes_msg, = unpack('>Q', conn.recv(8)) # Need the comma during assignment to unpack tuple returned from unpack
 
-            msg = recvall(conn, nbytes_msg, chunk_size=512)
+#             msg = recvall(conn, nbytes_msg, chunk_size=512)
 
-            if len(msg) != nbytes_msg:
-                conn.send(b'Full message not received... Please try again.')
-                print(f"[!] Error: Client {conn.getsockname()} must attempt to resend its message. Only {len(msg)} of {nbytes_msg} bytes received.")
-                return
+#             if len(msg) != nbytes_msg:
+#                 conn.send(b'Full message not received... Please try again.')
+#                 print(f"[!] Error: Client {conn.getsockname()} must attempt to resend its message. Only {len(msg)} of {nbytes_msg} bytes received.")
+#                 return
 
-            print(f"* RECIEVED MESSAGE FROM {conn.getsockname()}, LENGTH {len(msg)} BYTES, PREVIEW:\n{msg[:50].decode('utf-8')}...\n")
-            self._tcp_send(conn, len(msg))
+#             print(f"* RECIEVED MESSAGE FROM {conn.getsockname()}, LENGTH {len(msg)} BYTES, PREVIEW:\n{msg[:50].decode('utf-8')}...\n")
+#             self._tcp_send(conn, len(msg))
 
-            # Now decode full message and store in Queue
-            self.msg_queue.put(unpack_msg(msg))
+#             # Now decode full message and store in Queue
+#             self.msg_queue.put(unpack_msg(msg))
 
-        elif request_type == 'GET':
-            fwdmsg = 'No messages in the Queue :( Try again soon!'
-            try:
-                fwdmsg = self.msg_queue.get(timeout=0.1)
-            except Empty:
-                pass
-            send_chunked(conn, pack_msg(fwdmsg)) # If timeout, means there are no messages to send! So just continue on
+#         elif request_type == 'GET':
+#             fwdmsg = 'No messages in the Queue :( Try again soon!'
+#             try:
+#                 fwdmsg = self.msg_queue.get(timeout=0.1)
+#             except Empty:
+#                 pass
+#             send_chunked(conn, pack_msg(fwdmsg)) # If timeout, means there are no messages to send! So just continue on
 
-        elif request_type == 'DEL':
-            conn.send(b'GOODBYE!')
-            return 'DEL'
+#         elif request_type == 'DEL':
+#             conn.send(b'GOODBYE!')
+#             return 'DEL'
         
-        elif request_type == '':
-            print("[!] Automatically removing dead connection:", conn)
-            return 'DEL'
+#         elif request_type == '':
+#             print("[!] Automatically removing dead connection:", conn)
+#             return 'DEL'
 
-        else:
-            print(f"[!] Error: Client {conn} must attempt to resend its message. Invalid request type.")
+#         else:
+#             print(f"[!] Error: Client {conn} must attempt to resend its message. Invalid request type.")
 
-            try:
-                conn.send(b'[!] Error: Request Type must be either "GET" or "PUT"... Please try again.')
-            except:
-                print(Warning('Client connection unexpectedly terminated.'))
-                return 'DEL'
+#             try:
+#                 conn.send(b'[!] Error: Request Type must be either "GET" or "PUT"... Please try again.')
+#             except:
+#                 print(Warning('Client connection unexpectedly terminated.'))
+#                 return 'DEL'
 
-        # only return the connection if we accepted a new one 
-        # if accept:
-        #     return conn
+#         # only return the connection if we accepted a new one 
+#         # if accept:
+#         #     return conn
 
 
 # Client sockets block by default, and default to TCP mode.
