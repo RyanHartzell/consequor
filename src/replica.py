@@ -1,36 +1,50 @@
 import select
+
+import jsonschema.exceptions
 from msg_utils import *
 import random
 import core
 import jsonschema
 
-POST_JSON_SCHEMA = {
+JSON_SCHEMA = {
   "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "parent": {
-      "type": "number"
-    },
-    "id": {
-      "type": "number"
-    },
-    "content": {
-      "type": "string"
-    },
-    "meta": {
-      "type": "object",
-      "properties": {
-        "title": {
-          "type": "string"
-        },
-        "user": {
-          "type": "string"
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "parent": {
+        "type": "number"
+      },
+      "id": {
+        "type": "number"
+      },
+      "content": {
+        "type": "string"
+      },
+      "meta": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          }
         }
       }
-    }
+    },
+    "required": [
+      "parent",
+      "id",
+      "content",
+      "meta"
+    ]
   }
 }
 
+# Will raise error if not a valid array of post objects...
+def validate_payload_schema(msg_payload):
+    jsonschema.validate(instance=msg_payload, schema=JSON_SCHEMA)
 
 class Replica():
     def __init__(self, node_id, replica_address_list, mode = 'sequential' ) -> None:
