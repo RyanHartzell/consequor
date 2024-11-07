@@ -1,25 +1,29 @@
 import select
 from msg_utils import *
-
+from core import create_server, Modes, SERVER_TCP_PORT
 
 class Replica():
-    def __init__(self, node_id, mode = 'sequential' ) -> None:
-        # If this class exists, then it must be the coordinator. So there is no flag.
+    def __init__(self, node_id, replica_addresses, mode = 'sequential' ) -> None:
+        self.node_id = node_id
         self.consistency_mode = mode
-        self.replica_addresses = []
-        self.replica_connections = self.connect_to_replicas()        # includes our own socket and conections to every other replica
-        self.client_connections = []
+
+        # Pass in list of all replicas (including us!) in order of node_id
+        self.replica_addresses = replica_addresses
+        self.aliveness_mask = [True] * len(self.replica_addresses) # Everyone is initially alive and well
+
         self.coordinator_index = 0
         self.data = {}                      #dict to hold all post data, metadata, etc.
-        self.connections = self.replica_connections + self.client_connections           #concatenated list for selecting
-        self.me_socket = create_tcp_socket(node_id)
 
-        self.choose_strategy(self.consistency_mode)  # Strategy pattern. On 
-        
-        self.coordinator_flag = True
+        self.me_socket = create_server(self.replica_addresses[node_id][0], self.replica_addresses[node_id][1], Modes.TCP)
+        self.connections = self.connect_to_replicas()        # include connections to every other replica
 
         # self.elect_leader() #TODO
 
+    # Properties
+    @property
+    def coordinator_flag(self):
+        return self.node_id == self.coordinator_index
+    
     def run(self):
         while True:
             if self.coordinator_flag:

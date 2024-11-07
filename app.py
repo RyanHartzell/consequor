@@ -9,7 +9,7 @@ import random
 
 TEST_TCP_SERVER_PORT = 54345
 
-ARTICLE_CACHE = list(range(100))
+ARTICLE_CACHE = list(range(100)) # This will be part of the session state and updated on each read operation (choose interacts with this Cached set of articles?)
 
 # Should probably store the set of servers in a file or something read in
 # SERVERS = [('', 9900+i) for i in range(9)] # DEFAULTS TO 9 REPLICAS
@@ -60,23 +60,38 @@ if __name__=="__main__":
     with tabs[0]:
         st.header("List All Primary Articles")
         st.write("This tab shows all articles which belong to the root topic thread, and are not replies.")
-        page_num = 0
+
+        # Init page num state variable
+        if not "PAGE_NUM" in st.session_state:
+            st.session_state["PAGE_NUM"] = 0
+
         with st.container(height=400):
             num_articles = st.slider("# Articles Shown", 5, 20)
-            num_pages = (len(ARTICLE_CACHE) // num_articles) + 1
+            num_pages = (len(ARTICLE_CACHE) // num_articles) + 1 # ARTICLE_CACHE WILL COME FROM READS ON THE CONNECTED REPLICA
 
             # Add functionality to "page" through the articles?
             paging = st.columns(3)
-            paging[0].button(":arrow_backward:", use_container_width=True) # If clicked, add -1 to page_num, unless min page number
-            paging[1].button(":arrow_forward:", use_container_width=True) # If clicked, add 1 to page_num, unless max page number
-            paging[2].write(f"Showing page {page_num} of {num_pages}")
+            if paging[0].button(":arrow_backward:", use_container_width=True): # If clicked, add -1 to page_num, unless min page number
+                st.session_state["PAGE_NUM"] = min(st.session_state["PAGE_NUM"]-1, 0)
+            if paging[1].button(":arrow_forward:", use_container_width=True): # If clicked, add 1 to page_num, unless max page number
+                st.session_state["PAGE_NUM"] = min(st.session_state["PAGE_NUM"]+1, num_pages)
+            
+            paging[2].write(f"Showing page {st.session_state['PAGE_NUM']} of {num_pages}")
 
             # Show article list
             shown_articles = [st.container(height=100) for _ in range(num_articles)]
             for i,a in enumerate(shown_articles):
                 a.write(f"Hi, I'm article # {i}!")
+                article_checkbox_cols = a.columns([9,1])
+                with article_checkbox_cols[1]:
+                    if st.checkbox('Reply?', key=f'checkbox_{i}'):
+                        pass
+                        # create reply box?
+                        # st.write("I should enable a reply box in the sidebar???")
     
     with tabs[1]:
+        reply_content = side.chat_input("Reply here to a chosen post via the [CHOOSE] tab.")
+
         st.header("Focus One Article")
         # Maybe some navigation buttons here for going up a level? Every article should have a parent, unless it's 0 (root)
         st.button('Change Focus to Parent Article') # Trigger callback? Simply set article=parent and then st.rerun?
