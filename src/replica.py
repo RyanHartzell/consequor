@@ -2,6 +2,34 @@ import select
 from msg_utils import *
 import random
 import core
+import jsonschema
+
+POST_JSON_SCHEMA = {
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "parent": {
+      "type": "number"
+    },
+    "id": {
+      "type": "number"
+    },
+    "content": {
+      "type": "string"
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
 
 
 class Replica():
