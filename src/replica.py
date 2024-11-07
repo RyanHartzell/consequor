@@ -9,28 +9,28 @@ class Replica():
         # If this class exists, then it must be the coordinator. So there is no flag.
         self.consistency_mode = mode
         self.replica_addresses = replica_address_list
-        self.client_connections = []
+
         self.coordinator_index = 0
         self.data = {}                      #dict to hold all post data, metadata, etc.
-        self.connections = self.replica_connections + self.client_connections           #concatenated list for selecting
-        self.me_socket = create_tcp_socket(node_id)
-        self.replica_connections = self.connect_to_replicas()        # includes our own socket and conections to every other replica
+
+        self.me_socket = core.create_server()
+        self.connections = self.connect_to_replicas()        # includes our own socket and conections to every other replica
+
         self.this_replica_id = node_id
 
-        self.coordinator_flag = True
-
         # self.elect_leader() #TODO
-
     
+    @property
+    def coordinator_flag(self):
+        return self.this_replica_id == self.coordinator_index
+
     #POpulates list of sockets.
     def connect_to_replicas(self):
         for replica in range(0,len(self.replica_addresses)):
             if replica != self.this_replica_id:
-                self.replica_connections[replica] = core.create_client(self.replica_addresses[replica][0], self.replica_addresses[replica][1], core.Modes.TCP, block=True)
+                self.connections[replica] = core.create_client(self.replica_addresses[replica][0], self.replica_addresses[replica][1], core.Modes.TCP, block=True)
             else:
-                self.replica_connections[replica] = self.me_socket
-            
-
+                self.connections[replica] = self.me_socket
 
     def run_replica(self):
         # Listen to all replica and client connections
@@ -50,8 +50,8 @@ class Replica():
                     # In case of EOF, remove the connection instantly
                     for i,p in enumerate(peers):
                         if p == addr:
+                            self.connections[i].close()
                             self.connections.remove(self.connections[i])
-                            self.client_connections[i].close()
 
             # Saved TCP connections (mostly used in object oriented mode) that are sending will be handled here
             else:
@@ -75,8 +75,6 @@ class Replica():
         nbytes_msg, = unpack('>Q', conn.recv(8)) # Need the comma during assignment to unpack tuple returned from unpack
 
         msg = recvall(conn, nbytes_msg, chunk_size=512)
-
-
 
         if request_type == REQUEST_TYPE.POST:
             self.execute_POST(conn, msg)
