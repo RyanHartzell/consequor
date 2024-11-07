@@ -9,11 +9,10 @@ class Replica():
         # If this class exists, then it must be the coordinator. So there is no flag.
         self.consistency_mode = mode
         self.replica_addresses = replica_address_list
-
         self.coordinator_index = 0
         self.data = {}                      #dict to hold all post data, metadata, etc.
 
-        self.me_socket = core.create_server()
+        self.me_socket = core.create_server(self.replica_addresses[node_id][0], self.replica_addresses[node_id][1], core.Modes.TCP)
         self.connections = self.connect_to_replicas()        # includes our own socket and conections to every other replica
 
         self.this_replica_id = node_id
@@ -28,7 +27,7 @@ class Replica():
     def connect_to_replicas(self):
         for replica in range(0,len(self.replica_addresses)):
             if replica != self.this_replica_id:
-                self.connections[replica] = core.create_client(self.replica_addresses[replica][0], self.replica_addresses[replica][1], core.Modes.TCP, block=True)
+                self.connections[replica] = core.create_client(self.replica_addresses[replica][0], self.replica_addresses[replica][1], core.Modes.TCP)
             else:
                 self.connections[replica] = self.me_socket
 
