@@ -10,7 +10,7 @@ SERVER_DEFAULT_ADDR = ''
 SERVER_TCP_PORT = 54345
 
 #Enums
-class Request_Type(IntEnum):
+class REQUEST_TYPE(IntEnum):
     POST = 1
     CHOOSE = 2
     READ = 3
@@ -19,6 +19,7 @@ class Request_Type(IntEnum):
     r_SYNC = 6
     r_GET_ID = 7
     r_NOMINEE = 8
+
 
 # MSG MANIPULATION
 ######################

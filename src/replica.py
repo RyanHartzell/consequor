@@ -13,6 +13,8 @@ class Replica():
         self.data = {}                      #dict to hold all post data, metadata, etc.
         self.connections = self.replica_connections + self.client_connections           #concatenated list for selecting
         self.me_socket = create_tcp_socket(node_id)
+
+        self.choose_strategy(self.consistency_mode)  # Strategy pattern. On 
         
         self.coordinator_flag = True
 
@@ -94,7 +96,14 @@ class Replica():
 
     def execute_POST(self, conn, msg):
         if self.coordinator_flag:
-            pass
+            if self.consistency_mode == 'Sequential':
+                pass
+            elif self.consistency_mode == 'Quorum':
+                pass
+            elif self.consistency_mode == 'RYW':
+                pass
+            else:
+                print("Woah there. I don't recognize that mode")
         else:
             while(True):
                 #Forward POST to coordinator
