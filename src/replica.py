@@ -35,27 +35,36 @@ class Replica():
         for r in readable:
             # Check if tcp or udp and handle accordingly
             if r is self.me_socket: # ONLY RUNS FOR NEW CONNECTION!!!
-                conn = self._tcp_read(r)
-                self.connections.append(conn)
+
+                conn, addr = self._tcp_read(r) # Accept connection
+
+                peers = [s.getpeername() for s in self.connections]
+
+                if addr not in peers:
+                    self.connections.append(conn)
+                else:
+                    # In case of EOF, remove the connection instantly
+                    for i,p in enumerate(peers):
+                        if p == addr:
+                            self.connections.remove(self.connections[i])
+                            self.client_connections[i].close()
 
             # Saved TCP connections (mostly used in object oriented mode) that are sending will be handled here
             else:
                 ret = self._tcp_read(r, accept=False)
-                if ret == 'DEL':
+                if ret == 'KILL_CONNECTION': # Maybe just use the disconnect request here
                     self.connections.remove(r)
                     r.close() # hopefully this waits for the final message to clear the write queue, but not tragic if it doesn't.
-
 
     def _tcp_read(self, conn, accept=True):
         if accept:
             conn, addr = conn.accept()
             conn.setblocking(1)
-
-        
+            return (conn, addr)
 
         # HANDLE REQUEST TYPE FIRST
-        msg = conn.recv(3)
-        request_type = unpack_msg(msg) # Always first 3 bytes of communication
+        msg = conn.recv(8) # We want int64, which will represent an integer value
+        request_type = unpack_msg(msg) # Always first byte of communication
         print(f"* REQUEST TYPE: {request_type}")
 
         nbytes_msg, = unpack('>Q', conn.recv(8)) # Need the comma during assignment to unpack tuple returned from unpack
@@ -79,20 +88,15 @@ class Replica():
         elif request_type == Request_Type.r_GET_ID:
             self.execute_GET_ID(conn)
         elif request_type == Request_Type.r_NOMINEE:
-            self.execute_NOMINEE(conn)
+            self.execute_NOMINATE(conn)
         else:
             print(f"[!] Error: Client {conn} must attempt to resend its message. Invalid request type.")
 
             try:
-                conn.send(b'[!] Error: Request Type must be either "GET" or "PUT"... Please try again.')
+                conn.send(b'[!] Error: Request Type must be one of those described in the Request_Type class... Please try again.')
             except:
                 print(Warning('Client connection unexpectedly terminated.'))
-                return 'DEL'
-
-        # only return the connection if we accepted a new one 
-        if accept:
-            return conn
-
+                return 'KILL_CONNECTION'
 
     def execute_POST(self, conn, msg):
         if self.coordinator_flag:
@@ -141,7 +145,7 @@ class Replica():
     def execute_GET_ID(self, conn):
         pass
 
-    def execute_NOMINEE(self, conn):
+    def execute_NOMINATE(self, conn):
         pass
 
 

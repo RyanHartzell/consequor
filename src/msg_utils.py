@@ -6,7 +6,7 @@ from enum import IntEnum
 
 # Constants
 CHUNK_SIZE = 512
-SERVER_DEFAULT_ADDR = ''
+SERVER_DEFAULT_ADDR = '' # on windows this should probably be changed to localhost? Or the actual host address...
 SERVER_TCP_PORT = 54345
 
 #Enums
@@ -18,7 +18,7 @@ class REQUEST_TYPE(IntEnum):
     DISCONNECT = 5
     r_SYNC = 6
     r_GET_ID = 7
-    r_NOMINEE = 8
+    r_NOMINATE = 8
 
 
 # MSG MANIPULATION
