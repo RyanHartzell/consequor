@@ -19,7 +19,8 @@ class REQUEST_TYPE(IntEnum):
     r_SYNC = 6
     r_GET_ID = 7
     r_NOMINATE = 8
-
+    r_WRITE = 9
+    r_READ = 10
 
 # MSG MANIPULATION
 ######################

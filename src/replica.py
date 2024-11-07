@@ -78,21 +78,21 @@ class Replica():
 
 
 
-        if request_type == Request_Type.POST:
+        if request_type == REQUEST_TYPE.POST:
             self.execute_POST(conn, msg)
-        elif request_type == Request_Type.CHOOSE:
+        elif request_type == REQUEST_TYPE.CHOOSE:
             self.execute_CHOOSE(conn)
-        elif request_type == Request_Type.READ:
+        elif request_type == REQUEST_TYPE.READ:
             self.execute_READ(conn)
-        elif request_type == Request_Type.REPLY:
+        elif request_type == REQUEST_TYPE.REPLY:
             self.execute_REPLY(conn)
-        elif request_type == Request_Type.DISCONNECT:
+        elif request_type == REQUEST_TYPE.DISCONNECT:
             self.execute_DISCONNECT(conn)
-        elif request_type == Request_Type.r_SYNC:
+        elif request_type == REQUEST_TYPE.r_SYNC:
             self.execute_SYNC(conn)
-        elif request_type == Request_Type.r_GET_ID:
+        elif request_type == REQUEST_TYPE.r_GET_ID:
             self.execute_GET_ID(conn)
-        elif request_type == Request_Type.r_NOMINEE:
+        elif request_type == REQUEST_TYPE.r_NOMINATE:
             self.execute_NOMINATE(conn)
         else:
             print(f"[!] Error: Client {conn} must attempt to resend its message. Invalid request type.")
