@@ -1,9 +1,9 @@
 import jsonschema.exceptions
 from msg_utils import *
 import random
-import core
 import jsonschema
 import socket, threading
+import sys
 
 JSON_SCHEMA = {
   "$schema": "http://json-schema.org/draft-04/schema#",
