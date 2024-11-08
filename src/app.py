@@ -2,27 +2,27 @@
 Basic Client-side app for interacting with our replicated bulletin board service
 """
 
-from src.core import Client, Modes
-from src.msg_utils import *
+from core import create_client, Modes
+from msg_utils import *
 import streamlit as st
+from replica import TEST_CONNECTION_LIST
 import random
-
-TEST_TCP_SERVER_PORT = 54345
 
 ARTICLE_CACHE = list(range(100)) # This will be part of the session state and updated on each read operation (choose interacts with this Cached set of articles?)
 
 # Should probably store the set of servers in a file or something read in
 # SERVERS = [('', 9900+i) for i in range(9)] # DEFAULTS TO 9 REPLICAS
-SERVERS = [('localhost',TEST_TCP_SERVER_PORT+i) for i in range(9)]
-COORDINATOR = SERVERS[0]
+# SERVERS = [('localhost',TEST_TCP_SERVER_PORT+i) for i in range(9)]
+
+SERVERS = TEST_CONNECTION_LIST
 
 def connect(choice):
     print("Running connection code")
     # Opens a TCP connection to a server
     try:
         print(f"Attempting to connect to server at {choice}...")
-        c = Client(choice[0], choice[1], mode=Modes.TCP)
-        print(f"Connected to server using new TCP port:", c.socket)
+        c = create_client(choice[0], choice[1], mode=Modes.TCP, block=True)
+        print(f"Connected to server using new TCP port:", c)
         st.session_state["SERVER_CONNECTION"] = (choice, c) # This will be the actual client connection, if connection was successful
     except OSError as e:
         print(f'Could not connect to server at {choice}. Maybe it has not been initialized or has gone down?', e)
@@ -43,7 +43,7 @@ def gen_reply_form(el=st, height=400):
             else:
                 st.write(f"User {THIS_USER} replied: {reply}")
 
-def gen_post_form():
+def gen_post_form(user):
     # st.session_state.counter += 1    
     with st.form('Post Form', clear_on_submit=False):
         title = st.text_input("Title of your post")
@@ -54,6 +54,17 @@ def gen_post_form():
                 st.error("Please fill out the post text box prior to clicking submit!!!")
             else:
                 st.markdown(f"User *{THIS_USER}* created a post titled ***{title}***")
+
+                # Setup payload
+                payload = json.dumps({"id": None,
+                                     "parent": 0,
+                                     "title": title,
+                                     "content": post,
+                                     "user": user}).encode('utf-8') # bytes
+
+                # Send POST
+                st.session_state["SERVER_CONNECTION"][1].sendall(bytes(int(REQUEST_TYPE.POST))+bytes(len(payload))+payload)
+
 
 
 if __name__=="__main__":
@@ -80,10 +91,10 @@ if __name__=="__main__":
         if client_state is None:
             connect(choice)
         elif client_state[0] != choice:
-            print(f"Currently connected to server {client_state[0]} via TCP socket at {client_state[1].socket}")
+            print(f"Currently connected to server {client_state[0]} via TCP socket at {client_state[1]}")
             # st.session_state["SERVER_CONNECTION"][1].kill_request() # This might be causing issues, so should look at explicitly disconnecting if possible (socket.close()?)
             connect(choice)
-            print(f"Now connected to server {client_state[0]} via TCP socket at {client_state[1].socket}")
+            print(f"Now connected to server {client_state[0]} via TCP socket at {client_state[1]}")
 
         # print("CURRENT STATE: ", st.session_state)
         
@@ -140,5 +151,5 @@ if __name__=="__main__":
         with tabs[2]:
             st.header("Create A New Post")
 
-            gen_post_form()
+            gen_post_form(THIS_USER)
 
