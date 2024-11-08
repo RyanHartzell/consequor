@@ -162,7 +162,15 @@ class Replica:
         threading.Thread(target=self.run_server).start()
 
 
-class Replica():
-    def __init__(self, node_id, replica_address_list, mode = 'sequential' ) -> None:
-        
+args = sys.argv
+node_id = args[1]
+
+connections_list = [('127.0.0.1', 5001), ('127.0.0.1', 5002), ('127.0.0.1', 5003)]
+node_1 = Replica(replica_id=0, connections=connections_list)
+node_2 = Replica(replica_id=1, connections=connections_list)
+node_3 = Replica(replica_id=2, connections=connections_list)
+
+replicas = [node_1, node_2, node_3]
+
+replicas[int(node_id)].run()
 
