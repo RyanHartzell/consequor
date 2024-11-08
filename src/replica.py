@@ -1,9 +1,12 @@
 import jsonschema.exceptions
 from msg_utils import *
+from core import send_chunked, recvall
 import random
-import core
 import jsonschema
 import socket, threading
+import sys
+
+TEST_CONNECTION_LIST = [('127.0.0.1', 5001), ('127.0.0.1', 5002), ('127.0.0.1', 5003)]
 
 JSON_SCHEMA = {
   "$schema": "http://json-schema.org/draft-04/schema#",
@@ -47,7 +50,7 @@ def validate_payload_schema(msg_payload):
 
 
 class Replica:
-    def __init__(self, replica_id, connections, mode):
+    def __init__(self, replica_id, connections, mode='sequential'):
         self.replica_id = int(replica_id)
         self.connections = connections      #list of (addr, port) tuples for all replicas
         self.consistency_mode = mode        #string that describes mode
@@ -66,6 +69,8 @@ class Replica:
         coord_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         coord_socket.connect((coord_host, coord_port))
         coord_socket.sendall(message.encode('utf-8'))
+        
+        # TODO: Don't
         return_message = coord_socket.recv(1000)
         return str(return_message)
     
@@ -83,20 +88,26 @@ class Replica:
     def process_requests(self, conn, addr):
         #TODO Here we will read with JSON library and parse message. We may get rid of this while loop
         while True:
-            message = conn.recv(1024).decode('utf-8')
-            print(message)
-            if not message:
+            # message = conn.recv(1024).decode('utf-8')
+            # print(message)
+
+            
+            req_enum = conn.recv(1).decode('utf-8')
+            msglen = conn.recv(8).decode('utf-8')
+            message = recvall(conn, int(msglen))
+
+            if not req_enum:
                 break
-            if message == 'post':
+            if req_enum == 'post':
                 self.execute_post(conn, message)
-            elif message == 'choose':
+            elif req_enum == 'choose':
                 self.execute_choose(conn, message)
-            elif message == 'write':
-                self.execute_write(conn)
-            elif message == 'read_data':
+            elif req_enum == 'write':
+                self.execute_write(conn, message)
+            elif req_enum == 'read_data':
                 self.execute_read_data(conn)
             else:
-                print('unindentified message type')
+                print('unindentified req_enum type')
         conn.close()
 
     
@@ -161,16 +172,16 @@ class Replica:
         print(f"Node {self.replica_id} listening on {my_host_port}")
         threading.Thread(target=self.run_server).start()
 
+if __name__=="__main__":
+    args = sys.argv
+    node_id = args[1]
 
-args = sys.argv
-node_id = args[1]
+    connections_list = TEST_CONNECTION_LIST
+    node_1 = Replica(replica_id=0, connections=connections_list)
+    node_2 = Replica(replica_id=1, connections=connections_list)
+    node_3 = Replica(replica_id=2, connections=connections_list)
 
-connections_list = [('127.0.0.1', 5001), ('127.0.0.1', 5002), ('127.0.0.1', 5003)]
-node_1 = Replica(replica_id=0, connections=connections_list)
-node_2 = Replica(replica_id=1, connections=connections_list)
-node_3 = Replica(replica_id=2, connections=connections_list)
+    replicas = [node_1, node_2, node_3]
 
-replicas = [node_1, node_2, node_3]
-
-replicas[int(node_id)].run()
+    replicas[int(node_id)].run()
 
