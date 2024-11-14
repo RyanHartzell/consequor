@@ -122,6 +122,7 @@ def send_chunked(sock, data, address=None):
 def read(sock, address=None):
     if address is None:
         nbytes_msg = sock.recv(8) # 8 bytes for 64bit integer message length
+        print(nbytes_msg)
         if nbytes_msg == b'': # Case for a disconnecting Client socket
             return nbytes_msg
         length, = unpack('>Q', nbytes_msg)

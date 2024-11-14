@@ -8,7 +8,7 @@ import streamlit as st
 from replica import TEST_CONNECTION_LIST
 import random
 
-ARTICLE_CACHE = list(range(100)) # This will be part of the session state and updated on each read operation (choose interacts with this Cached set of articles?)
+# st.session_state["ARTICLES"] = list(range(100)) # This will be part of the session state and updated on each read operation (choose interacts with this Cached set of articles?)
 
 # Should probably store the set of servers in a file or something read in
 # SERVERS = [('', 9900+i) for i in range(9)] # DEFAULTS TO 9 REPLICAS
@@ -62,10 +62,29 @@ def gen_post_form(user):
                                      "content": post,
                                      "user": user}).encode('utf-8') # bytes
 
+                length = pack('>Q', len(payload))
+                request_type = pack('>Q', int(REQUEST_TYPE.POST))
                 # Send POST
-                st.session_state["SERVER_CONNECTION"][1].sendall(bytes(int(REQUEST_TYPE.POST))+bytes(len(payload))+payload)
+                st.session_state["SERVER_CONNECTION"][1].sendall(request_type+length+payload)
 
+                ack = st.session_state["SERVER_CONNECTION"][1].recv(1000)
 
+                st.write(ack, ':sparkles:')
+
+def perform_read():
+    length = pack('>Q', 0)
+    request_type = pack('>Q', int(REQUEST_TYPE.READ))
+    # Send READ
+    st.session_state["SERVER_CONNECTION"][1].sendall(request_type+length)
+
+    # Wait for the biiiiiiig message of all the returned articles
+    ret = read(st.session_state["SERVER_CONNECTION"][1]).decode('utf-8')
+    # ret = st.session_state["SERVER_CONNECTION"][1].recv(1000)
+    print(f"Return from read in perform: {ret}")
+    if ret == "Nuthin":
+        st.write("Oopsies... no articles yet :persevere: :sob: :poop:")
+    else:
+        st.session_state["ARTICLES"] = json.loads(ret)
 
 if __name__=="__main__":
     # Set up "login" page so each post has a username and address attached
@@ -76,6 +95,9 @@ if __name__=="__main__":
 
     if not st.session_state.get('current_article'):
         st.session_state['current_article'] = 0 # First root article by default
+
+    if not st.session_state.get('ARTICLES'):
+        st.session_state['ARTICLES'] = {}
 
     # 'Login' with username
     THIS_USER = st.text_input("Enter a username:")
@@ -94,14 +116,13 @@ if __name__=="__main__":
             print(f"Currently connected to server {client_state[0]} via TCP socket at {client_state[1]}")
             # st.session_state["SERVER_CONNECTION"][1].kill_request() # This might be causing issues, so should look at explicitly disconnecting if possible (socket.close()?)
             connect(choice)
-            print(f"Now connected to server {client_state[0]} via TCP socket at {client_state[1]}")
 
         # print("CURRENT STATE: ", st.session_state)
         
         st.write(f"You are connected to the following server: {st.session_state.get('SERVER_CONNECTION')}")
 
         # Try tabs instead!
-        tabs = st.tabs(["[READ]", "[CHOOSE/REPLY]", "[POST]"])
+        tabs = st.tabs(["[READ]", "[CHOOSE/REPLY]", "[POST]"], )
 
         with tabs[0]:
             st.header("List All Primary Articles")
@@ -111,29 +132,43 @@ if __name__=="__main__":
             if not "PAGE_NUM" in st.session_state:
                 st.session_state["PAGE_NUM"] = 0
 
-            with st.container(height=400):
-                num_articles = st.slider("# Articles Shown", 5, 20)
-                num_pages = (len(ARTICLE_CACHE) // num_articles) + 1 # ARTICLE_CACHE WILL COME FROM READS ON THE CONNECTED REPLICA
+            # Get updated article dictionary
+            if st.button("Refresh"):
+                perform_read()
 
-                # Add functionality to "page" through the articles?
-                paging = st.columns(3)
-                if paging[0].button(":arrow_backward:", use_container_width=True): # If clicked, add -1 to page_num, unless min page number
-                    st.session_state["PAGE_NUM"] = min(st.session_state["PAGE_NUM"]-1, 0)
-                if paging[1].button(":arrow_forward:", use_container_width=True): # If clicked, add 1 to page_num, unless max page number
-                    st.session_state["PAGE_NUM"] = min(st.session_state["PAGE_NUM"]+1, num_pages)
+            with st.container(height=400):
+                # num_articles = st.slider("# Articles Shown", 5, 20)
+                # num_pages = (len(st.session_state["ARTICLES"]) // num_articles) + 1 # st.session_state["ARTICLES"] WILL COME FROM READS ON THE CONNECTED REPLICA
+
+                # # Add functionality to "page" through the articles?
+                # paging = st.columns(3)
+                # if paging[0].button(":arrow_backward:", use_container_width=True): # If clicked, add -1 to page_num, unless min page number
+                #     st.session_state["PAGE_NUM"] = min(st.session_state["PAGE_NUM"]-1, 0)
+                # if paging[1].button(":arrow_forward:", use_container_width=True): # If clicked, add 1 to page_num, unless max page number
+                #     st.session_state["PAGE_NUM"] = min(st.session_state["PAGE_NUM"]+1, num_pages)
                 
-                paging[2].write(f"Showing page {st.session_state['PAGE_NUM']} of {num_pages}")
+                # paging[2].write(f"Showing page {st.session_state['PAGE_NUM']} of {num_pages}")
 
                 # Show article list
-                shown_articles = [st.container(height=100) for _ in range(num_articles)]
-                for i,a in enumerate(shown_articles):
-                    a.write(f"Hi, I'm article # {i+st.session_state['PAGE_NUM']*num_articles}!")
+                # shown_articles = [st.container(height=100) for _ in range(len(st.session_state["ARTICLES"]))]
+                
+                # for i,a in enumerate(shown_articles):
+
+                # RH: REWORKING THIS PAGE TO JUST BE SIMPLER
+                keys = sorted(list(st.session_state['ARTICLES'].keys()))
+                subcontainers = [st.container(height=100) for _ in range(len(keys))]
+                for i,k in enumerate(keys):
+                    a = subcontainers[i]
+                    a.write(f"Article ID #{st.session_state['ARTICLES'][k]['id']}")
+                    a.write(f"*Title: {st.session_state['ARTICLES'][k]['title']}*")
+                    a.write(f"**User: {st.session_state['ARTICLES'][k]['user']}**")
+                    a.write(f"{st.session_state['ARTICLES'][k]['content']}")
         
         with tabs[1]:
             st.header("Focus One Article")
 
             # Maybe some navigation buttons here for going up a level? Every article should have a parent, unless it's 0 (root)
-            article = st.selectbox("Choose an article from the dropdown:", ARTICLE_CACHE) # SHOULD ONLY ALLOW SELECTION OF ROOT ARTICLES INITIALLY, THEN ANY SUB ARTICLE CAN BE SELECTED!!!
+            article = st.selectbox("Choose an article from the dropdown:", list(st.session_state["ARTICLES"].keys())) # SHOULD ONLY ALLOW SELECTION OF ROOT ARTICLES INITIALLY, THEN ANY SUB ARTICLE CAN BE SELECTED!!!
             st.session_state["current_article"] = article
 
             if st.button('Change Focus to Parent Article'): # Trigger callback? Simply set article=parent and then st.rerun?
