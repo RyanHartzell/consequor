@@ -30,8 +30,29 @@ def connect(choice):
 def disconnect(sock):
     sock.sendall(b'DEL')
 
+def perform_reply(reply, parent):
+    # request_type = pack('>Q', int(REQUEST_TYPE.REPLY))
+
+    # Setup payload
+    payload = json.dumps({"id": None,
+                            "parent": parent,
+                            "title": "",
+                            "content": reply,
+                            "user": THIS_USER}).encode('utf-8') # bytes
+
+    length = pack('>Q', len(payload))
+    request_type = pack('>Q', int(REQUEST_TYPE.POST))
+    # Send POST
+    st.session_state["SERVER_CONNECTION"][1].sendall(request_type+length+payload)
+
+    ack = st.session_state["SERVER_CONNECTION"][1].recv(1000)
+
+    st.write(ack, ':sparkles:')
+    connect(st.session_state["SERVER_CONNECTION"][0])
+
+
 # By default el is just the normal st context, otherwise our form is built on the given element el
-def gen_reply_form(el=st, height=400):
+def gen_reply_form(parent, el=st, height=400):
     # st.session_state.counter += 1
     with el.form("Reply Form", clear_on_submit=False):
         title = None # Replies don't have a title field!
@@ -41,6 +62,7 @@ def gen_reply_form(el=st, height=400):
             if not reply:
                 st.error("Please fill out the reply box!!!")
             else:
+                perform_reply(reply, parent)
                 st.write(f"User {THIS_USER} replied: {reply}")
 
 def gen_post_form(user):
@@ -70,6 +92,7 @@ def gen_post_form(user):
                 ack = st.session_state["SERVER_CONNECTION"][1].recv(1000)
 
                 st.write(ack, ':sparkles:')
+                connect(st.session_state["SERVER_CONNECTION"][0])
 
 def perform_read():
     length = pack('>Q', 0)
@@ -85,6 +108,7 @@ def perform_read():
         st.write("Oopsies... no articles yet :persevere: :sob: :poop:")
     else:
         st.session_state["ARTICLES"] = json.loads(ret)
+    connect(st.session_state["SERVER_CONNECTION"][0])
 
 if __name__=="__main__":
     # Set up "login" page so each post has a username and address attached
@@ -181,7 +205,7 @@ if __name__=="__main__":
                     st.write(f"I selected article # {st.session_state['current_article']}")
             
             # Ensures that we only have a single reply form available!!!
-            gen_reply_form(choose_reply_cols[1])
+            gen_reply_form( st.session_state["current_article"], choose_reply_cols[1])
             
         with tabs[2]:
             st.header("Create A New Post")

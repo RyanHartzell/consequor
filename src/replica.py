@@ -121,8 +121,10 @@ class Replica:
                 self.execute_post(conn, packed_message)
             elif req_enum == int(REQUEST_TYPE.READ):
                 self.execute_read(conn, packed_message)
-            elif req_enum == 'choose':
+            elif req_enum == int(REQUEST_TYPE.CHOOSE):
                 self.execute_choose(conn, packed_message)
+            # elif req_enum == int(REQUEST_TYPE.REPLY):
+            #     self.execute_reply(conn, packed_message)
             elif req_enum == int(REQUEST_TYPE.r_WRITE):
                 self.execute_write(conn, packed_message)
             elif req_enum == int(REQUEST_TYPE.r_READ):
