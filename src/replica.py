@@ -91,64 +91,76 @@ class Replica:
 
     #Function that handles incoming messages and acts on consistency logic. This links communication logic to consistency logic
     def process_requests(self, conn, addr):
-        #TODO Here we will read with JSON library and parse message. We may get rid of this while loop
-        # while True:
-            # message = conn.recv(1024).decode('utf-8')
-            # print(message)
-            # request_type_bytes = conn.recv(8)
-
-        try:
-            req_enum, = unpack('>Q', conn.recv(8))
-            req_enum = int(req_enum)
-            nbytes_msg = conn.recv(8)
-            if nbytes_msg != b'': # Case for a disconnecting Client socket
-                msglen, = unpack('>Q', nbytes_msg)
-            print(msglen)
-            print("Oh snap")
-            message = recvall(conn, int(msglen))
-
-            length = pack('>Q', len(message))
-            request_type = pack('>Q', int(req_enum))
-
-            packed_message = bytearray(request_type+length+message)
-
-            print(message)
-            print(packed_message)
-
-            # if not req_enum:
-            #     break
-            if req_enum == int(REQUEST_TYPE.POST):
-                self.execute_post(conn, packed_message)
-            elif req_enum == int(REQUEST_TYPE.READ):
-                self.execute_read(conn, packed_message)
-            elif req_enum == int(REQUEST_TYPE.CHOOSE):
-                self.execute_choose(conn, packed_message)
-            # elif req_enum == int(REQUEST_TYPE.REPLY):
-            #     self.execute_reply(conn, packed_message)
-            elif req_enum == int(REQUEST_TYPE.r_WRITE):
-                self.execute_write(conn, packed_message)
-            elif req_enum == int(REQUEST_TYPE.r_READ):
-                self.execute_read_data(conn)
-            else:
-                print('unindentified req_enum type')
+        # try:
+        
+        req_enum_bytes = conn.recv(8)
+        if req_enum_bytes == b'':
             conn.close()
-        except Exception as e:
-            print(e)
+            return
+        req_enum, = unpack('>Q', req_enum_bytes)
+        req_enum = int(req_enum)
+        nbytes_msg = conn.recv(8)
+        if nbytes_msg != b'': # Case for a disconnecting Client socket
+            msglen, = unpack('>Q', nbytes_msg)
+  
+        message = recvall(conn, int(msglen))
 
-            conn.close()
+        length = pack('>Q', len(message))
+        request_type = pack('>Q', int(req_enum))
 
+        packed_message = bytearray(request_type+length+message)
+
+
+
+        # if not req_enum:
+        #     break
+        if req_enum == int(REQUEST_TYPE.POST):
+            self.execute_post(conn, packed_message)
+        elif req_enum == int(REQUEST_TYPE.READ):
+            self.execute_read(conn, packed_message)
+        # elif req_enum == int(REQUEST_TYPE.CHOOSE):
+        #     self.execute_choose(conn, packed_message)
+        # elif req_enum == int(REQUEST_TYPE.REPLY):
+        #     self.execute_reply(conn, packed_message)
+        elif req_enum == int(REQUEST_TYPE.r_WRITE):
+            self.execute_write(conn, packed_message)
+        elif req_enum == int(REQUEST_TYPE.r_READ):
+            self.execute_read_data(conn)
+        elif req_enum == int(REQUEST_TYPE.r_GET_ID):
+            self.execute_get_id(conn)
+        else:
+            print('unindentified req_enum type')
+        conn.close()
+        # except Exception as e:
+        #     print(e)
+
+        #     conn.close()
+
+    def execute_get_id(self, conn):
+
+        new_id = pack('>Q', self.get_article_id())
+        length = pack('>Q', len(new_id))
+
+        conn.sendall(length+new_id)
+        
     def execute_read(self, conn, message):
         if self.replica_id != self.coordinator_index:
             #Forward this to the coordinator
-            print("Forwarding Post to coordinator")
 
-            return_message = self.forward_to_coordinator(message)
+            if self.mode == 'sequential':
+                payload = json.dumps(self.data).encode('utf-8')
+                length = pack('>Q', len(payload))
+                return_message = length+payload
+            elif self.mode == 'quorum':
+                print("Forwarding read to coordinator")
+                return_message = self.forward_to_coordinator(message)
+
             conn.sendall(return_message)
         else:
             self.execute_read_coordinator(conn, message)
     
     def execute_read_coordinator(self, conn, message):
-        print("Executing post as coordinator")
+        print("Executing read as coordinator")
         if self.mode == 'sequential':
             self.execute_read_sequential(conn, message)
         elif self.mode == 'quorum':
@@ -159,7 +171,12 @@ class Replica:
             print(f"Unknown mode type: {self.mode}")
 
     def execute_read_sequential(self, conn, message):
-        pass
+        print("Hey, its me, coordinator, I'm reading Sequentially again...")
+        # Send it all
+        print(self.data)
+        payload = json.dumps(self.data).encode('utf-8')
+        length = pack('>Q', len(payload))
+        conn.sendall(length+payload)
 
     def execute_read_quorum(self, conn, message):
         print("Hey, its me, coordinator, I'm reading again...")
@@ -207,9 +224,28 @@ class Replica:
         print("Executing Post")
         if self.replica_id != self.coordinator_index:
             #Forward this to the coordinator
-            print("Forwarding Post to coordinator")
 
-            return_message = self.forward_to_coordinator(message)
+            if self.mode == 'sequential':
+                print("Requesting ID from coordinator")
+                req_enum = pack('>Q', int(REQUEST_TYPE.r_GET_ID))
+                length = pack('>Q', 0)
+                new_id = self.forward_to_coordinator(req_enum+length)
+
+                new_id = int.from_bytes(bytearray(new_id)[8:])
+
+                print(f'{new_id=}')
+
+                new_article = json.loads(message[16:].decode('utf-8'))
+                new_article['id'] = new_id
+                
+                self.data[new_id] = new_article
+
+                length = pack('>Q', len(b'ACK'))
+                return_message = length+b'ACK'  
+            elif self.mode == 'quorum':
+                print("Forwarding Post to coordinator")
+                return_message = self.forward_to_coordinator(message)
+            
             conn.sendall(return_message)
         else:
             self.execute_post_coordinator(conn, message)
@@ -220,7 +256,6 @@ class Replica:
 
         request_enum = message[:8]
         
-
         new_article = json.loads(message[16:].decode('utf-8'))
         new_article['id'] = self.get_article_id()
         payload = json.dumps(new_article).encode('utf-8')
@@ -228,7 +263,6 @@ class Replica:
         length = pack('>Q', len(payload))
 
         updated_message = request_enum+length+payload
-
 
         if self.mode == 'sequential':
             self.execute_post_sequential(conn, updated_message)
@@ -240,7 +274,17 @@ class Replica:
             print(f"Unknown mode type: {self.mode}")
     
     def execute_post_sequential(self, conn, message):
-        pass
+        print("Hey, its me, coordinator, I'm posting Sequentially again...")
+        
+        new_article = json.loads(message[16:].decode('utf-8'))
+        new_article['id'] = self.article_id
+        
+        self.data[self.article_id] = new_article
+
+        length = pack('>Q', len(b'ACK'))
+        return_message = length+b'ACK' 
+
+        conn.sendall(return_message)
     
     def execute_post_quorum(self, conn, message):
         print("Hey, its me, coordinator, I'm posting again...")
@@ -264,52 +308,52 @@ class Replica:
     def execute_post_read_your_write(self, conn, message):
         pass
     
-    def execute_choose(self, conn, message):
-        if self.replica_id != self.coordinator_index:
-            #Forward this to the coordinator
-            return_message = self.forward_to_coordinator(message)
-            conn.sendall(return_message.encode('utf-8'))
-        else:
-            self.execute_choose_coordinator(self, conn, message)
+    # def execute_choose(self, conn, message):
+    #     if self.replica_id != self.coordinator_index:
+    #         #Forward this to the coordinator
+    #         return_message = self.forward_to_coordinator(message)
+    #         conn.sendall(return_message.encode('utf-8'))
+    #     else:
+    #         self.execute_choose_coordinator(self, conn, message)
 
-    def execute_choose_coordinator(self, conn, message):
-        if self.mode == 'sequential':
-            self.execute_choose_sequential(conn, message)
-        elif self.mode == 'quorum':
-            self.execute_choose_quorum(conn, message)
-        elif self.mode == 'read_your_write':
-            self.execute_choose_read_your_write(conn, message)
-        else:
-            print(f"Unknown mode type: {self.mode}")
+    # def execute_choose_coordinator(self, conn, message):
+    #     if self.mode == 'sequential':
+    #         self.execute_choose_sequential(conn, message)
+    #     elif self.mode == 'quorum':
+    #         self.execute_choose_quorum(conn, message)
+    #     elif self.mode == 'read_your_write':
+    #         self.execute_choose_read_your_write(conn, message)
+    #     else:
+    #         print(f"Unknown mode type: {self.mode}")
 
-    # Contacting _any_ replica should always return the same sequence of data
-    def execute_choose_sequential(self, conn, message):
-        print("Hey, its me, coordinator, I'm choosing again.")
-        post_replicas = len(self.connections)
-        for replica in post_replicas:
-            target_host, target_port = self.connections[replica]
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.connect((target_host, target_port))
-                s.sendall('read_data'.encode('utf-8'))
-                action_message = str(s.recv(1000))
+    # # Contacting _any_ replica should always return the same sequence of data
+    # def execute_choose_sequential(self, conn, message):
+    #     print("Hey, its me, coordinator, I'm choosing again.")
+    #     post_replicas = len(self.connections)
+    #     for replica in post_replicas:
+    #         target_host, target_port = self.connections[replica]
+    #         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    #             s.connect((target_host, target_port))
+    #             s.sendall('read_data'.encode('utf-8'))
+    #             action_message = str(s.recv(1000))
             
-        conn.sendall(action_message.encode('utf-8'))
+    #     conn.sendall(action_message.encode('utf-8'))
     
-    def execute_choose_read_your_wrtie(self, conn, message):
-        pass
+    # def execute_choose_read_your_wrtie(self, conn, message):
+    #     pass
     
-    # A subset W > N/2 of replicas are written to at random
-    def execute_choose_quorum(self, conn, message):
-        print("Hey, its me, coordinator, I'm choosing again.")
-        post_replicas = random.sample(range(0,len(self.connections)), 2)
-        for replica in post_replicas:
-            target_host, target_port = self.connections[replica]
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.connect((target_host, target_port))
-                s.sendall('read_data'.encode('utf-8'))
-                action_message = str(s.recv(1000))
+    # # A subset W > N/2 of replicas are written to at random
+    # def execute_choose_quorum(self, conn, message):
+    #     print("Hey, its me, coordinator, I'm choosing again.")
+    #     post_replicas = random.sample(range(0,len(self.connections)), 2)
+    #     for replica in post_replicas:
+    #         target_host, target_port = self.connections[replica]
+    #         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    #             s.connect((target_host, target_port))
+    #             s.sendall('read_data'.encode('utf-8'))
+    #             action_message = str(s.recv(1000))
             
-        conn.sendall(action_message.encode('utf-8'))
+    #     conn.sendall(action_message.encode('utf-8'))
 
     def execute_write(self, conn, message):
         print('Received WRITE from coordinator')
