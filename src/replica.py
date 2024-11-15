@@ -54,7 +54,8 @@ class Replica:
         self.replica_id = int(replica_id)
         self.connections = connections      #list of (addr, port) tuples for all replicas
         self.consistency_mode = mode        #string that describes mode
-        self.coordinator_index = 0
+        self._coordinator_index = 0
+        self._backup_index = (self.coordinator_index + 1) % len(connections)
         self.data = {}                      #dict to hold all post data, metadata, etc.
         self.article_id = 0
         self.mode = mode
@@ -62,7 +63,17 @@ class Replica:
     #Sets coordinator flag
     @property
     def coordinator_flag(self):
-        return self.replica_id == self.coordinator_index
+        return self.replica_id == self._coordinator_index
+
+    #Get/Set as coordinator and run 'callbacks'
+    @property
+    def coordinator_index(self):
+        return self._coordinator_index
+
+    @coordinator_index.setter
+    def coordinator_index(self, ind):
+        self._coordinator_index = ind
+        self._backup_index = (self.coordinator_index + 1) % len(self.connections)
     
     # Forward messages and wait to recevie ack
     def forward_to_coordinator(self, message):
@@ -128,6 +139,10 @@ class Replica:
             self.execute_read_data(conn)
         elif req_enum == int(REQUEST_TYPE.r_GET_ID):
             self.execute_get_id(conn)
+        elif req_enum == int(REQUEST_TYPE.r_BACKUPDATE):
+            self.execute_backup_state_update(conn, packed_message)
+        elif req_enum == int(REQUEST_TYPE.r_SYNC):
+            self.execute_sync()
         else:
             print('unindentified req_enum type')
         conn.close()
@@ -136,17 +151,57 @@ class Replica:
 
         #     conn.close()
 
-    def execute_get_id(self, conn):
+    def execute_sync(self, conn, message):
+        if self.replica_id != self.coordinator_index:
+            #Forward this to the coordinator
+            return_message = self.forward_to_coordinator(message)
+            conn.sendall(return_message)
+        else:
+            self.execute_sync_coordinator(conn, message)
+    
+    def execute_sync_coordinator(self, conn, message):
+        print("Executing sync as coordinator")
+        request_type = pack('>Q', int(REQUEST_TYPE.r_READ))
+        message[:8] = request_type
 
+        merged_data = {}
+        for c in self.connections:            
+            target_host, target_port = c
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((target_host, target_port))
+                s.sendall(message)
+                data = json.loads(read(s).decode('utf-8'))
+                if data:
+                    data = {int(key):value for key,value in data.items()}
+                    merged_data.update(data)
+                print("Received Data from Read Request")
+        
+        if merged_data:
+            self.data = merged_data
+            req_enum = pack('>Q', int(REQUEST_TYPE.r_WRITE))
+            payload = json.dumps(self.data).encode('utf-8')
+            length = pack('>Q', len(payload))
+            for c in self.connections:            
+                target_host, target_port = c
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.connect((target_host, target_port))
+                    s.sendall(req_enum+length+payload)
+                    ack = read(s)
+                    print(f"Received {ack} from Write Request")
+        conn.sendall(pack('>Q', len(b'Consider yourself sunk'))+b'Consider yourself sunk')
+
+    def execute_backup_state_update(self, conn, message):
+        # unpack the id
+        self.article_id = int.from_bytes(bytes(message[16:]))
+
+    def execute_get_id(self, conn):
         new_id = pack('>Q', self.get_article_id())
         length = pack('>Q', len(new_id))
-
         conn.sendall(length+new_id)
         
     def execute_read(self, conn, message):
         if self.replica_id != self.coordinator_index:
             #Forward this to the coordinator
-
             if self.mode == 'sequential':
                 payload = json.dumps(self.data).encode('utf-8')
                 length = pack('>Q', len(payload))
@@ -378,11 +433,26 @@ class Replica:
         print(f"Read payload: {payload}")
         conn.sendall(payload_length + payload)
 
+    ###################################################################################
+    # Utilities
+
     def get_article_id(self):
         self.article_id += 1
 
+        # Update state of Backup replica
+        self.update_backup_state(self.article_id)
+
         return self.article_id
 
+    def update_backup_state(self, id):
+        request_type = pack('>Q', int(REQUEST_TYPE.r_BACKUPDATE))
+        payload = pack('>Q', id) # id is a 8 byte
+        length = pack('>Q', len(payload))
+
+        target_host, target_port = self.connections[self._backup_index]
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((target_host, target_port))
+            s.sendall(request_type+length+payload)
 
     def run_server(self):
         while True:

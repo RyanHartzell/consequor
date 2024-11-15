@@ -21,6 +21,7 @@ class REQUEST_TYPE(IntEnum):
     r_NOMINATE = 8
     r_WRITE = 9
     r_READ = 10
+    r_BACKUPDATE = 11
 
 # MSG MANIPULATION
 ######################
