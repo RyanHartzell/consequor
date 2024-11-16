@@ -32,23 +32,24 @@ def disconnect(sock):
 
 def perform_reply(reply, parent):
     # request_type = pack('>Q', int(REQUEST_TYPE.REPLY))
+    if st.session_state is not None:
 
-    # Setup payload
-    payload = json.dumps({"id": None,
-                            "parent": parent,
-                            "title": "",
-                            "content": reply,
-                            "user": THIS_USER}).encode('utf-8') # bytes
+        # Setup payload
+        payload = json.dumps({"id": None,
+                                "parent": parent,
+                                "title": "",
+                                "content": reply,
+                                "user": THIS_USER}).encode('utf-8') # bytes
 
-    length = pack('>Q', len(payload))
-    request_type = pack('>Q', int(REQUEST_TYPE.POST))
-    # Send POST
-    st.session_state["SERVER_CONNECTION"][1].sendall(request_type+length+payload)
+        length = pack('>Q', len(payload))
+        request_type = pack('>Q', int(REQUEST_TYPE.POST))
+        # Send POST
+        st.session_state["SERVER_CONNECTION"][1].sendall(request_type+length+payload)
 
-    ack = st.session_state["SERVER_CONNECTION"][1].recv(1000)
+        ack = st.session_state["SERVER_CONNECTION"][1].recv(1000)
 
-    st.write(ack, ':sparkles:')
-    connect(st.session_state["SERVER_CONNECTION"][0])
+        st.write(ack, ':sparkles:')
+        connect(st.session_state["SERVER_CONNECTION"][0])
 
 
 # By default el is just the normal st context, otherwise our form is built on the given element el
@@ -95,20 +96,38 @@ def gen_post_form(user):
                 connect(st.session_state["SERVER_CONNECTION"][0])
 
 def perform_read():
-    length = pack('>Q', 0)
-    request_type = pack('>Q', int(REQUEST_TYPE.READ))
-    # Send READ
-    st.session_state["SERVER_CONNECTION"][1].sendall(request_type+length)
+    if st.session_state is not None:
 
-    # Wait for the biiiiiiig message of all the returned articles
-    ret = read(st.session_state["SERVER_CONNECTION"][1]).decode('utf-8')
-    # ret = st.session_state["SERVER_CONNECTION"][1].recv(1000)
-    print(f"Return from read in perform: {ret}")
-    if ret == "Nuthin":
-        st.write("Oopsies... no articles yet :persevere: :sob: :poop:")
-    else:
-        st.session_state["ARTICLES"] = json.loads(ret)
-    connect(st.session_state["SERVER_CONNECTION"][0])
+        length = pack('>Q', 0)
+        request_type = pack('>Q', int(REQUEST_TYPE.READ))
+
+        # Send READ
+        st.session_state["SERVER_CONNECTION"][1].sendall(request_type+length)
+
+        # Wait for the biiiiiiig message of all the returned articles
+        ret = read(st.session_state["SERVER_CONNECTION"][1]).decode('utf-8')
+        # ret = st.session_state["SERVER_CONNECTION"][1].recv(1000)
+        print(f"Return from read in perform: {ret}")
+        if ret == "Nuthin":
+            st.write("Oopsies... no articles yet :persevere: :sob: :poop:")
+        else:
+            st.session_state["ARTICLES"] = json.loads(ret)
+        connect(st.session_state["SERVER_CONNECTION"][0])
+
+def perform_sync():
+    if st.session_state is not None:
+
+        # Send a sync command and wait to get an ack, and then finally perform a read once I get that ack
+        length = pack('>Q', 0)
+        request_type = pack('>Q', int(REQUEST_TYPE.r_SYNC))
+
+        # Send SYNC
+        st.session_state["SERVER_CONNECTION"][1].sendall(request_type+length)
+
+        # Recieve sync ack
+        ack = read(st.session_state["SERVER_CONNECTION"][1]).decode('utf-8')
+        
+        perform_read()
 
 if __name__=="__main__":
     # Set up "login" page so each post has a username and address attached
@@ -122,6 +141,9 @@ if __name__=="__main__":
 
     if not st.session_state.get('ARTICLES'):
         st.session_state['ARTICLES'] = {}
+
+    if not st.session_state.get('SERVER_CONNECTION'):
+        st.session_state['SERVER_CONNECTION'] = (None, None)
 
     # 'Login' with username
     THIS_USER = st.text_input("Enter a username:")
@@ -138,7 +160,6 @@ if __name__=="__main__":
             connect(choice)
         elif client_state[0] != choice:
             print(f"Currently connected to server {client_state[0]} via TCP socket at {client_state[1]}")
-            # st.session_state["SERVER_CONNECTION"][1].kill_request() # This might be causing issues, so should look at explicitly disconnecting if possible (socket.close()?)
             connect(choice)
 
         # print("CURRENT STATE: ", st.session_state)
@@ -146,7 +167,7 @@ if __name__=="__main__":
         st.write(f"You are connected to the following server: {st.session_state.get('SERVER_CONNECTION')}")
 
         # Try tabs instead!
-        tabs = st.tabs(["[READ]", "[CHOOSE/REPLY]", "[POST]"], )
+        tabs = st.tabs(["[READ]", "[CHOOSE/REPLY]", "[POST]"])
 
         with tabs[0]:
             st.header("List All Primary Articles")
@@ -157,10 +178,15 @@ if __name__=="__main__":
                 st.session_state["PAGE_NUM"] = 0
 
             # Get updated article dictionary
-            if st.button("Refresh"):
-                perform_read()
+            bcols = st.columns(2)
+            with bcols[0]:
+                if st.button("Read", 'Read-Read-Button'):
+                    perform_read()
+            with bcols[1]:
+                if st.button("Sync", 'Read-Sync-Button'):
+                    perform_sync()
 
-            with st.container(height=400):
+            with st.container(height=380):
                 # num_articles = st.slider("# Articles Shown", 5, 20)
                 # num_pages = (len(st.session_state["ARTICLES"]) // num_articles) + 1 # st.session_state["ARTICLES"] WILL COME FROM READS ON THE CONNECTED REPLICA
 
@@ -195,20 +221,33 @@ if __name__=="__main__":
             article = st.selectbox("Choose an article from the dropdown:", list(st.session_state["ARTICLES"].keys())) # SHOULD ONLY ALLOW SELECTION OF ROOT ARTICLES INITIALLY, THEN ANY SUB ARTICLE CAN BE SELECTED!!!
             st.session_state["current_article"] = article
 
-            if st.button('Change Focus to Parent Article'): # Trigger callback? Simply set article=parent and then st.rerun?
-                st.write("I'd switch to displaying the parent article and its children instead here")
-                st.session_state["current_article"] = 0 #article["parent"]
+            button_cols = st.columns(2)
+
+            with button_cols[0]:
+                if st.button('Change Focus to Parent Article'): # Trigger callback? Simply set article=parent and then st.rerun?
+                    parent = st.session_state["ARTICLES"][article]["parent"]
+                    if parent not in st.session_state["ARTICLES"].keys():
+                        # If we don't have that article, then sync first
+                        perform_sync()
+                    st.session_state["current_article"] = parent
+
+            with button_cols[1]:
+                if st.button("Sync", 'ChooseReply-Sync-Button'):
+                    perform_sync()
 
             choose_reply_cols = st.columns(2)
             with choose_reply_cols[0]:
                 with st.container(height=500):
-                    st.write(f"I selected article # {st.session_state['current_article']}")
+                    st.write(f"I selected article #{st.session_state['current_article']}")
             
             # Ensures that we only have a single reply form available!!!
             gen_reply_form( st.session_state["current_article"], choose_reply_cols[1])
             
         with tabs[2]:
             st.header("Create A New Post")
+
+            if st.button("Sync", 'Post-Sync-Button'):
+                perform_sync()
 
             gen_post_form(THIS_USER)
 
