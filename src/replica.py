@@ -142,7 +142,7 @@ class Replica:
         elif req_enum == int(REQUEST_TYPE.r_BACKUPDATE):
             self.execute_backup_state_update(conn, packed_message)
         elif req_enum == int(REQUEST_TYPE.r_SYNC):
-            self.execute_sync()
+            self.execute_sync(conn, packed_message)
         else:
             print('unindentified req_enum type')
         conn.close()
@@ -177,6 +177,7 @@ class Replica:
                 print("Received Data from Read Request")
         
         if merged_data:
+            print(f'{merged_data=}')
             self.data = merged_data
             req_enum = pack('>Q', int(REQUEST_TYPE.r_WRITE))
             payload = json.dumps(self.data).encode('utf-8')
@@ -209,7 +210,8 @@ class Replica:
             elif self.mode == 'quorum':
                 print("Forwarding read to coordinator")
                 return_message = self.forward_to_coordinator(message)
-
+            elif self.mode == 'read_your_write':
+                return_message = self.forward_to_coordinator(message=message)
             conn.sendall(return_message)
         else:
             self.execute_read_coordinator(conn, message)
@@ -273,7 +275,10 @@ class Replica:
             conn.sendall(length + b"Nuthin")
 
     def execute_read_read_your_write(self, conn, message):
-        pass
+        payload = json.dumps(self.data).encode('utf-8')
+        length = pack('>Q', len(payload))
+        conn.sendall(length+payload)
+        
 
     def execute_post(self, conn, message):
         print("Executing Post")
@@ -300,7 +305,8 @@ class Replica:
             elif self.mode == 'quorum':
                 print("Forwarding Post to coordinator")
                 return_message = self.forward_to_coordinator(message)
-            
+            elif self.mode == 'read_your_write':
+                return_message = self.forward_to_coordinator(message)
             conn.sendall(return_message)
         else:
             self.execute_post_coordinator(conn, message)
@@ -361,7 +367,18 @@ class Replica:
         conn.sendall(action_message)
     
     def execute_post_read_your_write(self, conn, message):
-        pass
+        request_type = pack('>Q', int(REQUEST_TYPE.r_SYNC))
+        message[:8] = request_type
+        # Here is where the message is actually posted
+        new_article = json.loads(message[16:].decode('utf-8'))
+
+        self.data[self.article_id] = new_article
+
+        self.execute_sync(conn=conn, message=message)
+
+
+
+
     
     # def execute_choose(self, conn, message):
     #     if self.replica_id != self.coordinator_index:
@@ -413,13 +430,20 @@ class Replica:
     def execute_write(self, conn, message):
         print('Received WRITE from coordinator')
 
+
+
         req_enum, = unpack('>Q', message[:8])
         req_enum = int(req_enum)
         # nbytes_msg = message[8:16] TODO Toss this
         message = json.loads(message[16:].decode('utf-8'))
+        if 'id' in message.keys():
+            self.data[int(message['id'])] = message
+            print(self.data)
+        else:
+            print(f"{message=}")
+            message = {int(key):value for key,value in message.items()}
+            self.data = message
 
-        self.data[int(message['id'])] = message
-        print(self.data)
 
         message = "ACK".encode('utf-8')
         length = pack(">Q", len(message))
@@ -474,11 +498,12 @@ class Replica:
 if __name__=="__main__":
     args = sys.argv
     node_id = args[1]
+    mode = args[2]
 
     connections_list = TEST_CONNECTION_LIST
-    node_1 = Replica(replica_id=0, connections=connections_list, mode='quorum')
-    node_2 = Replica(replica_id=1, connections=connections_list, mode='quorum')
-    node_3 = Replica(replica_id=2, connections=connections_list, mode='quorum')
+    node_1 = Replica(replica_id=0, connections=connections_list, mode=mode)
+    node_2 = Replica(replica_id=1, connections=connections_list, mode=mode)
+    node_3 = Replica(replica_id=2, connections=connections_list, mode=mode)
 
     replicas = [node_1, node_2, node_3]
 
