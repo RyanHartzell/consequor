@@ -73,30 +73,34 @@ def gen_post_form(user):
         post = st.text_area("Format your post here.", height=300)
         submit = st.form_submit_button("Click me submit your post!")
         if submit:
-            if not post:
-                st.error("Please fill out the post text box prior to clicking submit!!!")
+            if st.session_state["SERVER_CONNECTION"] is not None:
+                if not post:
+                    st.error("Please fill out the post text box prior to clicking submit!!!")
+                else:
+                    st.markdown(f"User *{THIS_USER}* created a post titled ***{title}***")
+
+                    # Setup payload
+                    payload = json.dumps({"id": None,
+                                        "parent": 0,
+                                        "title": title,
+                                        "content": post,
+                                        "user": user}).encode('utf-8') # bytes
+
+                    length = pack('>Q', len(payload))
+                    request_type = pack('>Q', int(REQUEST_TYPE.POST))
+                    # Send POST
+                    st.session_state["SERVER_CONNECTION"][1].sendall(request_type+length+payload)
+
+                    ack = st.session_state["SERVER_CONNECTION"][1].recv(1000)
+
+                    st.write(ack, ':sparkles:')
+                    connect(st.session_state["SERVER_CONNECTION"][0])
+
             else:
-                st.markdown(f"User *{THIS_USER}* created a post titled ***{title}***")
-
-                # Setup payload
-                payload = json.dumps({"id": None,
-                                     "parent": 0,
-                                     "title": title,
-                                     "content": post,
-                                     "user": user}).encode('utf-8') # bytes
-
-                length = pack('>Q', len(payload))
-                request_type = pack('>Q', int(REQUEST_TYPE.POST))
-                # Send POST
-                st.session_state["SERVER_CONNECTION"][1].sendall(request_type+length+payload)
-
-                ack = st.session_state["SERVER_CONNECTION"][1].recv(1000)
-
-                st.write(ack, ':sparkles:')
-                connect(st.session_state["SERVER_CONNECTION"][0])
+                st.write("No active replica connection... Are there any server replicas running?")
 
 def perform_read():
-    if st.session_state is not None:
+    if st.session_state["SERVER_CONNECTION"] is not None:
 
         length = pack('>Q', 0)
         request_type = pack('>Q', int(REQUEST_TYPE.READ))
@@ -115,7 +119,7 @@ def perform_read():
         connect(st.session_state["SERVER_CONNECTION"][0])
 
 def perform_sync():
-    if st.session_state is not None:
+    if st.session_state["SERVER_CONNECTION"] is not None:
 
         # Send a sync command and wait to get an ack, and then finally perform a read once I get that ack
         length = pack('>Q', 0)
@@ -143,7 +147,7 @@ if __name__=="__main__":
         st.session_state['ARTICLES'] = {}
 
     if not st.session_state.get('SERVER_CONNECTION'):
-        st.session_state['SERVER_CONNECTION'] = (None, None)
+        st.session_state['SERVER_CONNECTION'] = None
 
     # 'Login' with username
     THIS_USER = st.text_input("Enter a username:")
@@ -180,31 +184,13 @@ if __name__=="__main__":
             # Get updated article dictionary
             bcols = st.columns(2)
             with bcols[0]:
-                if st.button("Read", 'Read-Read-Button'):
+                if st.button("Read", 'Read-Read-Button', use_container_width=True):
                     perform_read()
             with bcols[1]:
-                if st.button("Sync", 'Read-Sync-Button'):
+                if st.button("Sync", 'Read-Sync-Button', use_container_width=True):
                     perform_sync()
 
             with st.container(height=380):
-                # num_articles = st.slider("# Articles Shown", 5, 20)
-                # num_pages = (len(st.session_state["ARTICLES"]) // num_articles) + 1 # st.session_state["ARTICLES"] WILL COME FROM READS ON THE CONNECTED REPLICA
-
-                # # Add functionality to "page" through the articles?
-                # paging = st.columns(3)
-                # if paging[0].button(":arrow_backward:", use_container_width=True): # If clicked, add -1 to page_num, unless min page number
-                #     st.session_state["PAGE_NUM"] = min(st.session_state["PAGE_NUM"]-1, 0)
-                # if paging[1].button(":arrow_forward:", use_container_width=True): # If clicked, add 1 to page_num, unless max page number
-                #     st.session_state["PAGE_NUM"] = min(st.session_state["PAGE_NUM"]+1, num_pages)
-                
-                # paging[2].write(f"Showing page {st.session_state['PAGE_NUM']} of {num_pages}")
-
-                # Show article list
-                # shown_articles = [st.container(height=100) for _ in range(len(st.session_state["ARTICLES"]))]
-                
-                # for i,a in enumerate(shown_articles):
-
-                # RH: REWORKING THIS PAGE TO JUST BE SIMPLER
                 keys = sorted(list(st.session_state['ARTICLES'].keys()))
                 subcontainers = [st.container(height=100) for _ in range(len(keys))]
                 for i,k in enumerate(keys):
@@ -224,15 +210,18 @@ if __name__=="__main__":
             button_cols = st.columns(2)
 
             with button_cols[0]:
-                if st.button('Change Focus to Parent Article'): # Trigger callback? Simply set article=parent and then st.rerun?
-                    parent = st.session_state["ARTICLES"][article]["parent"]
-                    if parent not in st.session_state["ARTICLES"].keys():
-                        # If we don't have that article, then sync first
-                        perform_sync()
-                    st.session_state["current_article"] = parent
+                if st.button('Change Focus to Parent Article', use_container_width=True): # Trigger callback? Simply set article=parent and then st.rerun?
+                    if st.session_state["ARTICLES"]:
+                        parent = st.session_state["ARTICLES"][article]["parent"]
+                        if parent not in st.session_state["ARTICLES"].keys():
+                            # If we don't have that article, then sync first
+                            perform_sync()
+                        st.session_state["current_article"] = parent
+                    else:
+                        st.write("No articles to choose from.")
 
             with button_cols[1]:
-                if st.button("Sync", 'ChooseReply-Sync-Button'):
+                if st.button("Sync", 'ChooseReply-Sync-Button', use_container_width=True):
                     perform_sync()
 
             choose_reply_cols = st.columns(2)
@@ -246,8 +235,8 @@ if __name__=="__main__":
         with tabs[2]:
             st.header("Create A New Post")
 
-            if st.button("Sync", 'Post-Sync-Button'):
-                perform_sync()
+            # if st.button("Sync", 'Post-Sync-Button'):
+            #     perform_sync()
 
             gen_post_form(THIS_USER)
 
