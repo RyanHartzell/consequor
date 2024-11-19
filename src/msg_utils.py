@@ -22,6 +22,7 @@ class REQUEST_TYPE(IntEnum):
     r_WRITE = 9
     r_READ = 10
     r_BACKUPDATE = 11
+    r_NEWLEADER = 12
 
 # MSG MANIPULATION
 ######################

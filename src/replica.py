@@ -79,13 +79,23 @@ class Replica:
     def forward_to_coordinator(self, message):
         coord_host, coord_port = self.connections[self.coordinator_index]
 
-        coord_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        coord_socket.settimeout(1)  # 1 second timeout
+        coord_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)        
+        coord_socket.settimeout(10) # Need the timeout in order to trigger the leader election
+        
+        # Try/Except around connection to catch 
+        try:
+            coord_socket.connect((coord_host, coord_port))
+        except socket.timeout:
+            print('[NOTICE!] COORDINATOR HAS DIED. ELECTING NEW COORDINATOR...')
+            # Initiate leader election
+            self.execute_leader_election()
+        
+        # Now proceed with our new coordinator!!! :)
+        coord_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)        
         coord_socket.connect((coord_host, coord_port))
+        coord_socket.settimeout(None) # Need the timeout in order to trigger the leader election
         coord_socket.sendall(message)
         
-        # TODO: Don't
-        # return_message = coord_socket.recv(1000)
         return_message = read(coord_socket)
 
         length = pack(">Q", len(return_message))
@@ -94,12 +104,10 @@ class Replica:
     # Forward message and don't wait to receive ack
     def send_to_coordinator(self, message):
         coord_host, coord_port = self.connections[0]
-        
+
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((coord_host, coord_port))
             s.sendall(message.encode('utf-8'))
-
-   
 
     #Function that handles incoming messages and acts on consistency logic. This links communication logic to consistency logic
     def process_requests(self, conn, addr):
@@ -122,8 +130,6 @@ class Replica:
 
         packed_message = bytearray(request_type+length+message)
 
-
-
         # if not req_enum:
         #     break
         if req_enum == int(REQUEST_TYPE.POST):
@@ -144,6 +150,12 @@ class Replica:
             self.execute_backup_state_update(conn, packed_message)
         elif req_enum == int(REQUEST_TYPE.r_SYNC):
             self.execute_sync(conn, packed_message)
+        elif req_enum == int(REQUEST_TYPE.r_NOMINATE):
+            # This means we are the new Leader (Coordinator)
+            self.execute_nominate(conn)
+        elif req_enum == int(REQUEST_TYPE.r_NEWLEADER):
+            # This means we need to update our internal record of coordinator and backup
+            self.execute_new_leader(conn)
         else:
             print('unindentified req_enum type')
         conn.close()
@@ -152,10 +164,57 @@ class Replica:
 
         #     conn.close()
 
+    def execute_leader_election(self):
+        # This is only run on connection timeout during forward of message to coordinator
+        message = pack('>Q', int(REQUEST_TYPE.r_NOMINATE)) + pack('>Q', 0)
+
+        # Send r_Nominate to backup
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect(self.connections[self._backup_index])
+            s.sendall(message)
+
+            # Block until ack received!
+            ack = read(s)
+    
+    def execute_nominate(self, conn):        
+        # First check if we already set ourselves as the coordinator (which means we can skip notifying everyone)
+        if not self.coordinator_flag:
+            # Update coordinator and backup fields
+            self.connections.pop(self.coordinator_index) # Blacklists the former coordinator
+            self.coordinator_index = self._backup_index # Sets both indices properly
+
+            # Then send everyone a 'r_NEWLEADER' message, except the last coordinator, and backup (self)
+            filtered = self.connections[self._backup_index+1:self.coordinator_index] if (self._backup_index < self.coordinator_index) else self.connections[:self.coordinator_index]+self.connections[self._backup_index+1:]
+
+            # Loop over filtered connection list, send notification of new leader, block and wait for an ack from each!!!
+            request_type = pack('>Q', int(REQUEST_TYPE.r_READ))
+            message = request_type+pack('>Q', 0) # Requires an 8 byte length to be handled properly
+
+            for c in filtered:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.connect(c)
+                    s.sendall(message)
+                    ack = read(s) # Don't need to anything with the ACK, just need to know that it was handled by the target
+
+        # Otherwise....
+        # Finally, send the replica who nominated you an ACK so they can forward their working message to you
+        conn.sendall(pack('>Q', 3)+b'ACK')
+
+    def execute_new_leader(self, conn):
+        # Blacklist the last coordinator (pop? or mask?)
+        self.connections.pop(self.coordinator_index) # Old coordinator index used to pop that address from connections
+
+        # Update internal record 
+        self.coordinator_index = self._backup_index # updates everything accordingly (in the future could pack the new id in here to avoid assumption of backup being coordinator index + 1)
+
+        # Send ACK to new leader (coordinator)
+        conn.sendall(pack('>Q', 3)+b'ACK')
+
     def execute_sync(self, conn, message):
         if self.replica_id != self.coordinator_index:
             #Forward this to the coordinator
             return_message = self.forward_to_coordinator(message)
+            print("Returned ACK: ", return_message)
             conn.sendall(return_message)
         else:
             self.execute_sync_coordinator(conn, message)
@@ -190,7 +249,9 @@ class Replica:
                     s.sendall(req_enum+length+payload)
                     ack = read(s)
                     print(f"Received {ack} from Write Request")
-        conn.sendall(pack('>Q', len(b'Consider yourself sunk'))+b'Consider yourself sunk')
+
+        conn.sendall(pack('>Q', 3)+b'ACK')
+        # conn.sendall(pack('>Q', len(b'Consider yourself sunk'))+b'Consider yourself sunk')
 
     def execute_backup_state_update(self, conn, message):
         # unpack the id
