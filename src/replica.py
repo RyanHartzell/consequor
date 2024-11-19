@@ -80,6 +80,7 @@ class Replica:
         coord_host, coord_port = self.connections[self.coordinator_index]
 
         coord_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        coord_socket.settimeout(1)  # 1 second timeout
         coord_socket.connect((coord_host, coord_port))
         coord_socket.sendall(message)
         
@@ -237,7 +238,8 @@ class Replica:
 
     def execute_read_quorum(self, conn, message):
         print("Hey, its me, coordinator, I'm reading again...")
-        read_replicas = random.sample(range(0,len(self.connections)), len(self.connections)//2 + 1)
+        # read_replicas = random.sample(range(0,len(self.connections)), len(self.connections)//2 + 1)
+        read_replicas = random.sample(range(0,len(self.connections)), len(self.connections)// 1)
 
         request_type = pack('>Q', int(REQUEST_TYPE.r_READ))
         message[:8] = request_type
@@ -349,7 +351,8 @@ class Replica:
     
     def execute_post_quorum(self, conn, message):
         print("Hey, its me, coordinator, I'm posting again...")
-        post_replicas = random.sample(range(0,len(self.connections)), len(self.connections)//2 + 1)
+        # post_replicas = random.sample(range(0,len(self.connections)), len(self.connections)//2 + 1)
+        post_replicas = random.sample(range(0,len(self.connections)), 1)
 
         request_type = pack('>Q', int(REQUEST_TYPE.r_WRITE))
         message[:8] = request_type
@@ -499,6 +502,7 @@ if __name__=="__main__":
     args = sys.argv
     node_id = args[1]
     mode = args[2]
+    
 
     connections_list = TEST_CONNECTION_LIST
     node_1 = Replica(replica_id=0, connections=connections_list, mode=mode)
