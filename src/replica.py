@@ -88,10 +88,12 @@ class Replica:
         except socket.timeout:
             print('[NOTICE!] COORDINATOR HAS DIED. ELECTING NEW COORDINATOR...')
             # Initiate leader election
-            coord_socket.settimeout(None) # In the future the connection stuff should be wrapped in a recursive deal that increments the target based on connectivity, incase the backup went down
             self.execute_leader_election()
         
         # Now proceed with our new coordinator!!! :)
+        coord_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)        
+        coord_socket.connect((coord_host, coord_port))
+        coord_socket.settimeout(None) # Need the timeout in order to trigger the leader election
         coord_socket.sendall(message)
         
         return_message = read(coord_socket)
@@ -212,6 +214,7 @@ class Replica:
         if self.replica_id != self.coordinator_index:
             #Forward this to the coordinator
             return_message = self.forward_to_coordinator(message)
+            print("Returned ACK: ", return_message)
             conn.sendall(return_message)
         else:
             self.execute_sync_coordinator(conn, message)
@@ -246,7 +249,9 @@ class Replica:
                     s.sendall(req_enum+length+payload)
                     ack = read(s)
                     print(f"Received {ack} from Write Request")
-        conn.sendall(pack('>Q', len(b'Consider yourself sunk'))+b'Consider yourself sunk')
+
+        conn.sendall(pack('>Q', 3)+b'ACK')
+        # conn.sendall(pack('>Q', len(b'Consider yourself sunk'))+b'Consider yourself sunk')
 
     def execute_backup_state_update(self, conn, message):
         # unpack the id

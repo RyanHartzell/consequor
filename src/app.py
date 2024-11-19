@@ -129,8 +129,12 @@ def perform_sync():
         st.session_state["SERVER_CONNECTION"][1].sendall(request_type+length)
 
         # Recieve sync ack
-        ack = read(st.session_state["SERVER_CONNECTION"][1]).decode('utf-8')
-        
+        # ack = read(st.session_state["SERVER_CONNECTION"][1]).decode('utf-8')
+        ack = st.session_state["SERVER_CONNECTION"][1].recv(1000).decode('utf-8')
+
+        # REFRESH THE CONNECTION!!!!!        
+        connect(st.session_state["SERVER_CONNECTION"][0])
+
         perform_read()
 
 if __name__=="__main__":
