@@ -299,7 +299,8 @@ class Replica:
 
     def execute_read_quorum(self, conn, message):
         print("Hey, its me, coordinator, I'm reading again...")
-        read_replicas = random.sample(range(0,len(self.connections)), len(self.connections)//2 + 1)
+        # read_replicas = random.sample(range(0,len(self.connections)), len(self.connections)//2 + 1)
+        read_replicas = random.sample(range(0,len(self.connections)), len(self.connections)// 1)
 
         request_type = pack('>Q', int(REQUEST_TYPE.r_READ))
         message[:8] = request_type
@@ -411,7 +412,8 @@ class Replica:
     
     def execute_post_quorum(self, conn, message):
         print("Hey, its me, coordinator, I'm posting again...")
-        post_replicas = random.sample(range(0,len(self.connections)), len(self.connections)//2 + 1)
+        # post_replicas = random.sample(range(0,len(self.connections)), len(self.connections)//2 + 1)
+        post_replicas = random.sample(range(0,len(self.connections)), 1)
 
         request_type = pack('>Q', int(REQUEST_TYPE.r_WRITE))
         message[:8] = request_type
@@ -561,6 +563,7 @@ if __name__=="__main__":
     args = sys.argv
     node_id = args[1]
     mode = args[2]
+    
 
     connections_list = TEST_CONNECTION_LIST
     node_1 = Replica(replica_id=0, connections=connections_list, mode=mode)
